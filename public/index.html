@@ -16,6 +16,7 @@
         <div class="metrics">
           <span id="status" class="pill">offline</span>
           <span><strong id="players">0</strong> players</span>
+          <span><strong id="score">0</strong> score</span>
           <span><strong id="ping">--</strong> ms</span>
         </div>
       </section>
@@ -32,10 +33,17 @@
           </div>
           <div class="instructions">
             <span>WASD / arrow keys to move</span>
+            <span>Collect orbs for points</span>
+            <span>Hold the green zone for passive score</span>
             <span>Enter to chat</span>
             <span>Esc to unfocus chat</span>
           </div>
         </aside>
+
+        <section class="leaderboard-panel">
+          <div class="panel-title">Leaderboard</div>
+          <ol id="leaderboard" class="leaderboard"></ol>
+        </section>
 
         <section class="chat-panel">
           <div id="chatLog" class="chat-log"></div>

@@ -185,6 +185,45 @@ button {
   gap: 8px;
 }
 
+.leaderboard-panel {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  width: min(280px, calc(100% - 36px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.panel-title {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.leaderboard {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.leaderboard li {
+  color: var(--muted);
+}
+
+.leaderboard .me {
+  color: var(--text);
+}
+
+.leaderboard b {
+  color: var(--accent);
+  font-weight: 750;
+}
+
 .chat-log {
   padding: 10px;
   overflow: auto;
@@ -237,5 +276,11 @@ button {
     bottom: 12px;
     width: auto;
     grid-template-rows: minmax(88px, 130px) 40px;
+  }
+
+  .leaderboard-panel {
+    left: 12px;
+    bottom: 196px;
+    width: min(260px, calc(100% - 24px));
   }
 }

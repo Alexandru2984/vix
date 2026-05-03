@@ -29,6 +29,8 @@ namespace arena
     std::string id;
     std::string name;
     std::string color;
+    int score{0};
+    double controlCarry{0.0};
     double x{0.0};
     double y{0.0};
     PlayerInput input;

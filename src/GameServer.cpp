@@ -21,6 +21,7 @@ namespace arena
       : rng_(std::random_device{}()),
         startedAt_(std::chrono::steady_clock::now())
   {
+    ensureOrbsLocked();
   }
 
   GameServer::~GameServer()
@@ -291,6 +292,19 @@ namespace arena
 
   void GameServer::handlePing(ClientConnection *session, const nlohmann::json &message)
   {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto sit = sessionToPlayer_.find(session);
+      if (sit != sessionToPlayer_.end())
+      {
+        auto pit = players_.find(sit->second);
+        if (pit != players_.end())
+        {
+          pit->second.lastSeen = std::chrono::steady_clock::now();
+        }
+      }
+    }
+
     nlohmann::json pong = {{"type", "pong"}};
     if (message.contains("t"))
     {
@@ -335,6 +349,8 @@ namespace arena
 
   void GameServer::step(double dt)
   {
+    ensureOrbsLocked();
+
     for (auto &[_, player] : players_)
     {
       double dx = 0.0;
@@ -375,6 +391,63 @@ namespace arena
         player.y = candidateY;
       }
     }
+
+    handleOrbPickupsLocked();
+    handleControlZoneLocked(dt);
+  }
+
+  void GameServer::ensureOrbsLocked()
+  {
+    while (orbs_.size() < targetOrbCount_)
+    {
+      orbs_.push_back(spawnOrbLocked());
+    }
+  }
+
+  void GameServer::handleOrbPickupsLocked()
+  {
+    const double pickupRadius = World::playerRadius + orbRadius_;
+    const double pickupRadiusSq = pickupRadius * pickupRadius;
+
+    for (auto &[_, player] : players_)
+    {
+      for (auto &orb : orbs_)
+      {
+        const double dx = player.x - orb.x;
+        const double dy = player.y - orb.y;
+        if (dx * dx + dy * dy <= pickupRadiusSq)
+        {
+          player.score += orb.value;
+          ++totalOrbPickups_;
+          orb = spawnOrbLocked();
+        }
+      }
+    }
+  }
+
+  void GameServer::handleControlZoneLocked(double dt)
+  {
+    const double zoneSq = controlZoneRadius_ * controlZoneRadius_;
+
+    for (auto &[_, player] : players_)
+    {
+      const double dx = player.x - controlZoneX_;
+      const double dy = player.y - controlZoneY_;
+      if (dx * dx + dy * dy > zoneSq)
+      {
+        player.controlCarry = 0.0;
+        continue;
+      }
+
+      player.controlCarry += dt * controlPointsPerSecond_;
+      const int wholePoints = static_cast<int>(player.controlCarry);
+      if (wholePoints > 0)
+      {
+        player.score += wholePoints;
+        totalControlZonePoints_ += static_cast<std::uint64_t>(wholePoints);
+        player.controlCarry -= wholePoints;
+      }
+    }
   }
 
   void GameServer::cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents)
@@ -383,7 +456,7 @@ namespace arena
     for (auto it = players_.begin(); it != players_.end();)
     {
       const bool expiredSession = it->second.session.expired();
-      const bool stale = now - it->second.lastSeen > std::chrono::minutes(5);
+      const bool stale = now - it->second.lastSeen > std::chrono::seconds(20);
       if (expiredSession || stale)
       {
         leftEvents.push_back({{"type", "player_left"}, {"id", it->second.id}});
@@ -414,7 +487,33 @@ namespace arena
     return {
         {"type", "snapshot"},
         {"players", players},
+        {"orbs", orbsJsonLocked()},
+        {"controlZone", controlZoneJson()},
         {"serverTime", isoTimestampUtc()}};
+  }
+
+  nlohmann::json GameServer::orbsJsonLocked() const
+  {
+    nlohmann::json orbs = nlohmann::json::array();
+    for (const auto &orb : orbs_)
+    {
+      orbs.push_back({
+          {"id", orb.id},
+          {"x", orb.x},
+          {"y", orb.y},
+          {"value", orb.value},
+          {"color", orb.color}});
+    }
+    return orbs;
+  }
+
+  nlohmann::json GameServer::controlZoneJson() const
+  {
+    return {
+        {"x", controlZoneX_},
+        {"y", controlZoneY_},
+        {"radius", controlZoneRadius_},
+        {"pointsPerSecond", controlPointsPerSecond_}};
   }
 
   std::vector<GameServer::SessionPtr> GameServer::liveSessionsLocked() const
@@ -484,6 +583,38 @@ namespace arena
     return palette[dist(rng_)];
   }
 
+  GameServer::Orb GameServer::spawnOrbLocked()
+  {
+    static const std::vector<std::string> colors = {
+        "#66ccff", "#ffcc66", "#7af59b", "#ff7aa8", "#f5f06b"};
+
+    std::uniform_real_distribution<double> xdist(40.0, world_.width() - 40.0);
+    std::uniform_real_distribution<double> ydist(40.0, world_.height() - 40.0);
+    std::uniform_int_distribution<int> valueDist(0, 9);
+    std::uniform_int_distribution<std::size_t> colorDist(0, colors.size() - 1);
+
+    Orb orb;
+    orb.id = "o-" + std::to_string(nextOrbNumber_++);
+    orb.value = valueDist(rng_) == 0 ? 15 : 5;
+    orb.color = orb.value > 5 ? "#f5f06b" : colors[colorDist(rng_)];
+
+    for (int attempt = 0; attempt < 120; ++attempt)
+    {
+      const double x = xdist(rng_);
+      const double y = ydist(rng_);
+      if (!world_.collides(x, y, orbRadius_ + 8.0))
+      {
+        orb.x = x;
+        orb.y = y;
+        return orb;
+      }
+    }
+
+    orb.x = world_.width() * 0.5;
+    orb.y = world_.height() * 0.5 - 220.0;
+    return orb;
+  }
+
   nlohmann::json GameServer::healthJson() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -500,7 +631,9 @@ namespace arena
     return {
         {"service", "vix-arena"},
         {"players", players_.size()},
-        {"world", worldSummary(world_)}};
+        {"world", worldSummary(world_)},
+        {"orbs", orbsJsonLocked()},
+        {"controlZone", controlZoneJson()}};
   }
 
   nlohmann::json GameServer::statsJson() const
@@ -512,6 +645,8 @@ namespace arena
         {"uptimeSeconds", uptimeSeconds(startedAt_)},
         {"tickRateTarget", tickRateTarget_},
         {"totalConnectionsSinceStart", totalConnections_},
-        {"totalChatMessagesSinceStart", totalChatMessages_}};
+        {"totalChatMessagesSinceStart", totalChatMessages_},
+        {"totalOrbPickupsSinceStart", totalOrbPickups_},
+        {"totalControlZonePointsSinceStart", totalControlZonePoints_}};
   }
 }

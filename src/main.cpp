@@ -132,6 +132,11 @@ namespace
     {
     }
 
+    ~WebSocketSession()
+    {
+      closeClient();
+    }
+
     template <class Body, class Allocator>
     void run(http::request<Body, http::basic_fields<Allocator>> req)
     {

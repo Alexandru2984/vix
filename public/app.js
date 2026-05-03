@@ -3,18 +3,22 @@
   const ctx = canvas.getContext("2d");
   const statusEl = document.getElementById("status");
   const playersEl = document.getElementById("players");
+  const scoreEl = document.getElementById("score");
   const pingEl = document.getElementById("ping");
   const joinPanel = document.getElementById("joinPanel");
   const nameInput = document.getElementById("nameInput");
   const joinBtn = document.getElementById("joinBtn");
   const chatLog = document.getElementById("chatLog");
   const chatInput = document.getElementById("chatInput");
+  const leaderboardEl = document.getElementById("leaderboard");
 
   const state = {
     ws: null,
     joined: false,
     localId: null,
     world: { width: 2000, height: 1200, obstacles: [] },
+    orbs: [],
+    controlZone: { x: 1000, y: 600, radius: 150, pointsPerSecond: 2 },
     players: new Map(),
     renderPlayers: new Map(),
     keys: { up: false, down: false, left: false, right: false },
@@ -22,7 +26,8 @@
     lastInputSent: "",
     camera: { x: 1000, y: 600 },
     pingTimer: 0,
-    reconnectTimer: 0
+    reconnectTimer: 0,
+    startedAt: performance.now()
   };
 
   function resize() {
@@ -93,6 +98,8 @@
       state.joined = true;
     } else if (msg.type === "snapshot") {
       applySnapshot(msg.players || []);
+      state.orbs = Array.isArray(msg.orbs) ? msg.orbs : state.orbs;
+      state.controlZone = msg.controlZone || state.controlZone;
     } else if (msg.type === "chat") {
       appendChat(msg.from || "server", msg.message || "");
     } else if (msg.type === "chat_history") {
@@ -132,6 +139,26 @@
       }
     }
     playersEl.textContent = String(state.players.size);
+    const local = state.players.get(state.localId);
+    scoreEl.textContent = String(local?.score || 0);
+    renderLeaderboard();
+  }
+
+  function renderLeaderboard() {
+    const sorted = Array.from(state.players.values())
+      .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.name).localeCompare(String(b.name)))
+      .slice(0, 6);
+    leaderboardEl.replaceChildren();
+    for (const p of sorted) {
+      const li = document.createElement("li");
+      if (p.id === state.localId) li.className = "me";
+      const name = document.createElement("span");
+      name.textContent = `${p.name || "Player"} `;
+      const score = document.createElement("b");
+      score.textContent = String(p.score || 0);
+      li.append(name, score);
+      leaderboardEl.append(li);
+    }
   }
 
   function appendChat(from, message) {
@@ -221,6 +248,7 @@
       rp.y += (target.y - rp.y) * 0.28;
       rp.name = target.name;
       rp.color = target.color;
+      rp.score = target.score || 0;
       state.renderPlayers.set(id, rp);
     }
   }
@@ -270,12 +298,49 @@
     ctx.lineWidth = 4;
     ctx.strokeRect(0, 0, state.world.width, state.world.height);
 
+    const zone = state.controlZone;
+    if (zone) {
+      const pulse = 0.5 + Math.sin((performance.now() - state.startedAt) / 520) * 0.12;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(122,245,155,${0.12 + pulse * 0.04})`;
+      ctx.strokeStyle = "rgba(122,245,155,0.58)";
+      ctx.lineWidth = 3;
+      ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#7af59b";
+      ctx.fillText(`Control zone +${zone.pointsPerSecond || 2}/s`, zone.x, zone.y + 5);
+    }
+
     ctx.fillStyle = "rgba(255,204,102,0.24)";
     ctx.strokeStyle = "rgba(255,204,102,0.58)";
     ctx.lineWidth = 2;
     for (const o of state.world.obstacles || []) {
       ctx.fillRect(o.x, o.y, o.w, o.h);
       ctx.strokeRect(o.x, o.y, o.w, o.h);
+    }
+
+    for (const orb of state.orbs) {
+      const t = (performance.now() - state.startedAt) / 450 + Number(String(orb.id || "0").replace(/\D/g, "")) * 0.3;
+      const radius = 10 + Math.sin(t) * 2 + (orb.value > 5 ? 3 : 0);
+      ctx.beginPath();
+      ctx.shadowColor = orb.color || "#66ccff";
+      ctx.shadowBlur = orb.value > 5 ? 18 : 10;
+      ctx.fillStyle = orb.color || "#66ccff";
+      ctx.arc(orb.x, orb.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(255,255,255,0.62)";
+      ctx.stroke();
+      if (orb.value > 5) {
+        ctx.font = "11px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#0d1117";
+        ctx.fillText(String(orb.value), orb.x, orb.y + 4);
+      }
     }
 
     for (const p of state.renderPlayers.values()) {
@@ -294,6 +359,8 @@
       ctx.textAlign = "center";
       ctx.fillStyle = "#edf2f7";
       ctx.fillText(p.name || "Player", p.x, p.y - 28);
+      ctx.fillStyle = "#ffcc66";
+      ctx.fillText(String(p.score || 0), p.x, p.y + 39);
     }
     ctx.restore();
 

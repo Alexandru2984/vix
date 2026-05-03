@@ -9,7 +9,8 @@ namespace arena
         {"name", player.name},
         {"x", player.x},
         {"y", player.y},
-        {"color", player.color}};
+        {"color", player.color},
+        {"score", player.score}};
   }
 
   nlohmann::json errorMessage(const std::string &message)
