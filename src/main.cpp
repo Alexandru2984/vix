@@ -102,7 +102,12 @@ namespace
 
   bool safeTarget(std::string_view target)
   {
-    return !target.empty() && target.front() == '/' && target.find("..") == std::string_view::npos;
+    return !target.empty() &&
+           target.front() == '/' &&
+           (target.size() == 1 || target[1] != '/') &&
+           target.find("..") == std::string_view::npos &&
+           target.find('\\') == std::string_view::npos &&
+           target.find('%') == std::string_view::npos;
   }
 
   template <class Body, class Allocator>
@@ -141,6 +146,7 @@ namespace
     void run(http::request<Body, http::basic_fields<Allocator>> req)
     {
       ws_.set_option(websocket::stream_base::timeout::suggested(beast::role_type::server));
+      ws_.read_message_max(arena::maxWsPayloadBytes);
       ws_.set_option(websocket::stream_base::decorator(
           [](websocket::response_type &res)
           { res.set(http::field::server, "VixArena"); }));
@@ -314,11 +320,23 @@ namespace
 
       std::filesystem::path path = root_ / "public";
       if (target == "/")
+      {
         path /= "index.html";
+      }
       else if (target == "/docs")
+      {
         path /= "docs.html";
+      }
       else
-        path /= target.substr(1);
+      {
+        const std::filesystem::path relative = std::filesystem::path(target.substr(1)).lexically_normal();
+        if (relative.empty() || relative.is_absolute())
+        {
+          res = makeResponse(req_, http::status::bad_request, "bad request", "text/plain; charset=utf-8");
+          return;
+        }
+        path /= relative;
+      }
 
       std::string body;
       if (!readFile(path, body))
