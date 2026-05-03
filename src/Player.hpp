@@ -30,13 +30,22 @@ namespace arena
     std::string name;
     std::string color;
     int score{0};
+    int orbQuestProgress{0};
     double controlCarry{0.0};
     double x{0.0};
     double y{0.0};
     PlayerInput input;
     std::weak_ptr<ClientConnection> session;
     std::chrono::steady_clock::time_point lastSeen;
+    std::chrono::steady_clock::time_point lastInput;
     std::chrono::steady_clock::time_point lastChat;
     std::chrono::steady_clock::time_point speedBoostUntil;
+    std::chrono::steady_clock::time_point dashReadyAt;
+    std::chrono::steady_clock::time_point shieldUntil;
+    std::chrono::steady_clock::time_point shieldReadyAt;
+    std::chrono::steady_clock::time_point magnetUntil;
+    std::chrono::steady_clock::time_point magnetReadyAt;
+    double facingX{1.0};
+    double facingY{0.0};
   };
 }

@@ -73,6 +73,7 @@ namespace arena
     void handleInput(ClientConnection *session, const nlohmann::json &message);
     void handleChat(ClientConnection *session, const nlohmann::json &message);
     void handlePing(ClientConnection *session, const nlohmann::json &message);
+    void handleAbility(ClientConnection *session, const nlohmann::json &message);
 
     void tickLoop();
     void step(double dt);
@@ -84,6 +85,7 @@ namespace arena
     void handleOrbPickupsLocked();
     void handlePowerupPickupsLocked();
     void handleControlZoneLocked(double dt);
+    void applyDashLocked(Player &player, std::chrono::steady_clock::time_point now);
     void addEventLocked(std::string type, std::string text);
     void cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents);
     [[nodiscard]] nlohmann::json snapshotLocked() const;
@@ -121,6 +123,7 @@ namespace arena
     std::uint64_t totalOrbPickups_{0};
     std::uint64_t totalControlZonePoints_{0};
     std::uint64_t totalPowerupsSinceStart_{0};
+    std::uint64_t totalQuestsCompleted_{0};
     std::uint64_t nextOrbNumber_{1};
     std::uint64_t nextPowerupNumber_{1};
     std::uint64_t nextEventNumber_{1};
@@ -134,12 +137,22 @@ namespace arena
     int lastWinnerScore_{0};
 
     static constexpr int tickRateTarget_{20};
+    static constexpr std::size_t maxPlayers_{64};
+    static constexpr int orbQuestGoal_{3};
+    static constexpr int orbQuestReward_{20};
     static constexpr double playerSpeed_{235.0};
     static constexpr std::size_t targetOrbCount_{18};
     static constexpr std::size_t targetPowerupCount_{5};
     static constexpr double orbRadius_{12.0};
     static constexpr double powerupRadius_{14.0};
     static constexpr double speedBoostMultiplier_{1.55};
+    static constexpr double dashDistance_{170.0};
+    static constexpr int dashCooldownMs_{2600};
+    static constexpr int shieldDurationMs_{3200};
+    static constexpr int shieldCooldownMs_{10000};
+    static constexpr int magnetDurationMs_{5200};
+    static constexpr int magnetCooldownMs_{12000};
+    static constexpr double magnetRadius_{210.0};
     static constexpr double controlZoneX_{1000.0};
     static constexpr double controlZoneY_{600.0};
     static constexpr double controlZoneRadius_{150.0};

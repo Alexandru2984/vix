@@ -5,6 +5,7 @@
   const statusEl = document.getElementById("status");
   const playersEl = document.getElementById("players");
   const scoreEl = document.getElementById("score");
+  const questEl = document.getElementById("quest");
   const roundTimeEl = document.getElementById("roundTime");
   const boostEl = document.getElementById("boost");
   const pingEl = document.getElementById("ping");
@@ -23,6 +24,13 @@
   const objectiveLabel = document.getElementById("objectiveLabel");
   const objectiveDistance = document.getElementById("objectiveDistance");
   const mobileChatBadge = document.getElementById("mobileChatBadge");
+  const dashBtn = document.getElementById("dashBtn");
+  const shieldBtn = document.getElementById("shieldBtn");
+  const magnetBtn = document.getElementById("magnetBtn");
+  const soundBtn = document.getElementById("soundBtn");
+  const dashState = document.getElementById("dashState");
+  const shieldState = document.getElementById("shieldState");
+  const magnetState = document.getElementById("magnetState");
 
   const state = {
     ws: null,
@@ -45,6 +53,10 @@
     chatUnread: 0,
     lastLocalScore: null,
     floaters: [],
+    particles: [],
+    trails: [],
+    soundEnabled: localStorage.getItem("vix.sound") === "on",
+    audio: null,
     activeObjective: null,
     camera: { x: 1000, y: 600 },
     layoutHeight: 0,
@@ -146,8 +158,12 @@
 
   function sendJoin() {
     const name = nameInput.value.trim();
+    if (name) localStorage.setItem("vix.name", name);
     send({ type: "join", name });
   }
+
+  const savedName = localStorage.getItem("vix.name");
+  if (savedName) nameInput.value = savedName.slice(0, 18);
 
   function handleMessage(msg) {
     if (!msg || typeof msg.type !== "string") return;
@@ -178,6 +194,12 @@
       state.players.delete(msg.id);
       state.renderPlayers.delete(msg.id);
       appendSystem("Player left");
+    } else if (msg.type === "ability") {
+      const p = state.renderPlayers.get(msg.id) || state.players.get(msg.id);
+      if (p) {
+        burstParticles(p.x, p.y, msg.ability === "dash" ? "#66ccff" : msg.ability === "shield" ? "#7af59b" : "#c9a7ff", 18);
+      }
+      if (msg.id === state.localId) playTone(msg.ability === "dash" ? 440 : msg.ability === "shield" ? 330 : 520, 0.08, "triangle");
     } else if (msg.type === "pong") {
       if (typeof msg.t === "number") {
         pingEl.textContent = String(Math.max(0, Date.now() - msg.t));
@@ -214,11 +236,15 @@
         createdAt: performance.now()
       });
       state.floaters = state.floaters.slice(-8);
+      burstParticles(local.x, local.y, local.color || "#ffcc66", 14);
+      playTone(660, 0.055, "sine");
     }
     if (local) state.lastLocalScore = local.score || 0;
     else state.lastLocalScore = null;
     scoreEl.textContent = String(local?.score || 0);
+    questEl.textContent = local?.quest ? `${local.quest.progress || 0}/${local.quest.goal || 3}` : "0/3";
     boostEl.textContent = local?.boostMs > 0 ? `${Math.ceil(local.boostMs / 1000)}s` : "--";
+    updateAbilityHud(local);
     renderLeaderboard();
   }
 
@@ -244,6 +270,74 @@
     const minutes = Math.floor(safe / 60);
     const seconds = Math.floor(safe % 60);
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function formatCooldown(ms) {
+    const safe = Math.max(0, Number(ms) || 0);
+    return safe <= 0 ? "Ready" : `${Math.ceil(safe / 1000)}s`;
+  }
+
+  function setAbilityButton(button, label, activeMs, cooldownMs) {
+    const active = Number(activeMs) > 0;
+    const cooling = Number(cooldownMs) > 0;
+    button.classList.toggle("active", active);
+    button.classList.toggle("cooldown", !active && cooling);
+    button.classList.toggle("ready", !active && !cooling);
+    label.textContent = active ? `${Math.ceil(activeMs / 1000)}s` : formatCooldown(cooldownMs);
+  }
+
+  function updateAbilityHud(local) {
+    const abilities = local?.abilities || {};
+    setAbilityButton(dashBtn, dashState, 0, abilities.dashCooldownMs || 0);
+    setAbilityButton(shieldBtn, shieldState, abilities.shieldMs || 0, abilities.shieldCooldownMs || 0);
+    setAbilityButton(magnetBtn, magnetState, abilities.magnetMs || 0, abilities.magnetCooldownMs || 0);
+    soundBtn.textContent = state.soundEnabled ? "Sound on" : "Sound off";
+    soundBtn.classList.toggle("ready", state.soundEnabled);
+  }
+
+  function ensureAudio() {
+    if (!state.audio) {
+      state.audio = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (state.audio.state === "suspended") state.audio.resume();
+  }
+
+  function playTone(freq, duration = 0.07, type = "sine") {
+    if (!state.soundEnabled) return;
+    try {
+      ensureAudio();
+      const osc = state.audio.createOscillator();
+      const gain = state.audio.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, state.audio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.035, state.audio.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, state.audio.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(state.audio.destination);
+      osc.start();
+      osc.stop(state.audio.currentTime + duration + 0.02);
+    } catch {
+      state.soundEnabled = false;
+    }
+  }
+
+  function burstParticles(x, y, color, count) {
+    const now = performance.now();
+    for (let i = 0; i < count; i += 1) {
+      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+      const speed = 55 + Math.random() * 95;
+      state.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color,
+        createdAt: now,
+        ttl: 520 + Math.random() * 280
+      });
+    }
+    state.particles = state.particles.slice(-180);
   }
 
   function clamp(value, min, max) {
@@ -417,6 +511,16 @@
     send({ type: "input", ...state.keys, seq: ++state.seq });
   }
 
+  function castAbility(ability) {
+    if (!state.joined) return;
+    send({ type: "ability", ability });
+  }
+
+  function sendQuickPing(message) {
+    if (!state.joined) return;
+    send({ type: "chat", message });
+  }
+
   function setTouchInput(dx, dy) {
     const dead = 0.22;
     state.keys.left = dx < -dead;
@@ -517,6 +621,21 @@
       chatInput.focus();
       return;
     }
+    if (event.code === "Space") {
+      event.preventDefault();
+      castAbility("dash");
+      return;
+    }
+    if (event.key === "Shift") {
+      event.preventDefault();
+      castAbility("shield");
+      return;
+    }
+    if (event.key.toLowerCase() === "e") {
+      event.preventDefault();
+      castAbility("magnet");
+      return;
+    }
     if (keyMap(event.key, true)) {
       event.preventDefault();
       sendInput();
@@ -572,6 +691,22 @@
     if (event.key === "Enter") joinBtn.click();
   });
 
+  dashBtn.addEventListener("click", () => castAbility("dash"));
+  shieldBtn.addEventListener("click", () => castAbility("shield"));
+  magnetBtn.addEventListener("click", () => castAbility("magnet"));
+  soundBtn.addEventListener("click", () => {
+    state.soundEnabled = !state.soundEnabled;
+    localStorage.setItem("vix.sound", state.soundEnabled ? "on" : "off");
+    if (state.soundEnabled) {
+      ensureAudio();
+      playTone(520, 0.08, "sine");
+    }
+    updateAbilityHud(state.players.get(state.localId));
+  });
+  document.querySelectorAll(".ping-button").forEach((button) => {
+    button.addEventListener("click", () => sendQuickPing(button.dataset.ping || "Ping"));
+  });
+
   touchStick.addEventListener("pointerdown", (event) => {
     startTouchMove(event, false);
   });
@@ -612,16 +747,30 @@
   });
 
   function updateRenderPlayers() {
+    const now = performance.now();
     for (const [id, target] of state.players) {
       const rp = state.renderPlayers.get(id) || { ...target };
+      const moved = Math.hypot((target.x || 0) - (rp.x || 0), (target.y || 0) - (rp.y || 0)) > 4;
+      if (moved && Math.random() < 0.45) {
+        state.trails.push({
+          x: rp.x,
+          y: rp.y,
+          radius: id === state.localId ? 13 : 9,
+          color: target.color || "#66ccff",
+          createdAt: now,
+          ttl: id === state.localId ? 520 : 360
+        });
+      }
       rp.x += (target.x - rp.x) * 0.28;
       rp.y += (target.y - rp.y) * 0.28;
       rp.name = target.name;
       rp.color = target.color;
       rp.score = target.score || 0;
       rp.boostMs = target.boostMs || 0;
+      rp.abilities = target.abilities || {};
       state.renderPlayers.set(id, rp);
     }
+    state.trails = state.trails.slice(-140);
   }
 
   function drawGrid(viewW, viewH) {
@@ -754,6 +903,36 @@
     }
   }
 
+  function drawTrails(now) {
+    state.trails = state.trails.filter((trail) => now - trail.createdAt < trail.ttl);
+    for (const trail of state.trails) {
+      const progress = (now - trail.createdAt) / trail.ttl;
+      ctx.save();
+      ctx.globalAlpha = (1 - progress) * 0.22;
+      ctx.fillStyle = trail.color || "#66ccff";
+      ctx.beginPath();
+      ctx.arc(trail.x, trail.y, trail.radius * (1 + progress * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawParticles(now) {
+    state.particles = state.particles.filter((particle) => now - particle.createdAt < particle.ttl);
+    for (const particle of state.particles) {
+      const age = now - particle.createdAt;
+      const dt = age / 1000;
+      const progress = age / particle.ttl;
+      ctx.save();
+      ctx.globalAlpha = 1 - progress;
+      ctx.fillStyle = particle.color || "#66ccff";
+      ctx.beginPath();
+      ctx.arc(particle.x + particle.vx * dt, particle.y + particle.vy * dt, 3.5 * (1 - progress) + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   function render() {
     const now = performance.now();
     resize();
@@ -851,6 +1030,8 @@
       ctx.restore();
     }
 
+    drawTrails(now);
+
     for (const p of state.renderPlayers.values()) {
       ctx.beginPath();
       ctx.fillStyle = p.color || "#66ccff";
@@ -869,6 +1050,20 @@
         ctx.arc(p.x, p.y, 25, 0, Math.PI * 2);
         ctx.stroke();
       }
+      if (p.abilities?.shieldMs > 0) {
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(122,245,155,0.70)";
+        ctx.lineWidth = 4;
+        ctx.arc(p.x, p.y, 31, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (p.abilities?.magnetMs > 0) {
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(201,167,255,0.34)";
+        ctx.lineWidth = 2;
+        ctx.arc(p.x, p.y, 74 + Math.sin(now / 180) * 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       ctx.font = "13px system-ui, sans-serif";
       ctx.textAlign = "center";
@@ -878,6 +1073,7 @@
       ctx.fillText(String(p.score || 0), p.x, p.y + 39);
     }
     drawFloaters(now);
+    drawParticles(now);
     ctx.restore();
     drawObjectiveMarker(viewW, viewH, left, top);
     drawMinimap(viewW, viewH);

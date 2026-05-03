@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VixArena</title>
-    <link rel="stylesheet" href="/styles.css?v=design-20260504">
+    <link rel="stylesheet" href="/styles.css?v=forta-20260504">
   </head>
   <body>
     <main class="shell">
@@ -17,6 +17,7 @@
           <span id="status" class="pill">offline</span>
           <span><strong id="players">0</strong> players</span>
           <span><strong id="score">0</strong> score</span>
+          <span><strong id="quest">0/3</strong> quest</span>
           <span><strong id="roundTime">3:00</strong> round</span>
           <span><strong id="boost">--</strong> boost</span>
           <span><strong id="ping">--</strong> ms</span>
@@ -31,6 +32,31 @@
           <strong id="objectiveLabel">Join arena</strong>
           <em id="objectiveDistance">Ready</em>
         </div>
+
+        <section class="ability-bar" aria-label="Abilities">
+          <button id="dashBtn" class="ability-button" type="button">
+            <span>Space</span>
+            <strong>Dash</strong>
+            <em id="dashState">Ready</em>
+          </button>
+          <button id="shieldBtn" class="ability-button" type="button">
+            <span>Shift</span>
+            <strong>Shield</strong>
+            <em id="shieldState">Ready</em>
+          </button>
+          <button id="magnetBtn" class="ability-button" type="button">
+            <span>E</span>
+            <strong>Magnet</strong>
+            <em id="magnetState">Ready</em>
+          </button>
+          <button id="soundBtn" class="ability-button icon-button" type="button" aria-label="Toggle sound">Sound</button>
+        </section>
+
+        <section class="quick-pings" aria-label="Quick pings">
+          <button class="ping-button" type="button" data-ping="Control zone!">Zone</button>
+          <button class="ping-button" type="button" data-ping="Orbs here!">Orbs</button>
+          <button class="ping-button" type="button" data-ping="Need help!">Help</button>
+        </section>
 
         <aside id="joinPanel" class="join-panel">
           <h2>Join arena</h2>
@@ -78,6 +104,6 @@
         </div>
       </section>
     </main>
-    <script src="/app.js?v=design-20260504"></script>
+    <script src="/app.js?v=forta-20260504"></script>
   </body>
 </html>

@@ -7,11 +7,13 @@ Vix.cpp v2.5.2 was installed and evaluated on this VPS. Its HTTP listener did no
 ## Features
 
 - Shared 2D world with server-authoritative movement, bounds, and static obstacles.
-- Collectible orb pickups with server-authoritative scoring.
+- Collectible orb pickups with server-authoritative scoring and score feedback effects.
 - Temporary speed powerups with server-authoritative boost timers.
-- Central control zone that grants passive points while occupied.
+- Server-authoritative abilities: dash, shield/phasing, and magnet.
+- Contested central control zone that grants passive points only when one player holds it.
+- Orb Run mini quest: every 3 orb pickups grants a server-authoritative bonus.
 - Live leaderboard, arena event feed, minimap, objective HUD, edge target markers, score popups, and local score HUD.
-- WebSocket join, input, chat, ping/pong, and snapshot messages.
+- WebSocket join, input, ability, chat, ping/pong, and snapshot messages.
 - 20 ticks/sec server loop with low-cost full snapshots for v1.
 - In-memory chat history for the last 50 messages.
 - Responsive canvas frontend with interpolation, HUD, chat, mobile chat badge, floating touch joystick, and connection metrics.
@@ -111,6 +113,9 @@ Client messages:
 ```json
 {"type":"join","name":"Micu"}
 {"type":"input","up":true,"down":false,"left":false,"right":true,"seq":123}
+{"type":"ability","ability":"dash"}
+{"type":"ability","ability":"shield"}
+{"type":"ability","ability":"magnet"}
 {"type":"chat","message":"salut"}
 {"type":"ping","t":1710000000000}
 ```
@@ -130,17 +135,23 @@ Server messages:
 
 - `GET /health` returns status, service name, player count, and uptime.
 - `GET /api/state` returns player count, world size, obstacles, current orbs, speed powerups, round state, and control zone metadata.
-- `GET /api/stats` returns connected players, uptime, tick target, total connections, total chat messages, orb pickups, powerup pickups, rounds, and control-zone points.
+- `GET /api/stats` returns connected players, max players, uptime, tick target, total connections, total chat messages, orb pickups, powerup pickups, rounds, and control-zone points.
 - `GET /docs` explains controls, protocol, endpoints, and limitations.
 - `GET /` serves the browser game.
 
 ## Controls
 
 - `WASD` or arrow keys: move.
+- `Space`: dash.
+- `Shift`: shield/phasing.
+- `E`: magnet.
 - Touch joystick: move on mobile/touchscreen devices. On touchscreens, dragging directly on the arena also starts a floating joystick.
+- Ability buttons work on desktop and touch devices.
+- Quick ping buttons send short team-style chat messages.
 - Collect glowing orbs for instant points.
 - Grab violet boosts for temporary speed.
 - Hold the central control zone for passive points.
+- Complete Orb Run by collecting 3 orbs for a bonus.
 - Follow the objective HUD and edge markers to find nearby orbs, boosts, or the control zone.
 - `Enter`: focus chat.
 - `Esc`: unfocus chat.
@@ -173,9 +184,14 @@ ss -ltnp | grep vix-arena
 - Display names and chat messages are length-limited and control-character cleaned.
 - Invalid JSON and unknown WebSocket message types are rejected.
 - Chat is throttled per connection.
+- Input messages are throttled server-side.
+- WebSocket payloads are capped before JSON parsing.
+- The arena caps active joined players.
 - Movement is authoritative and clamped server-side.
+- Abilities and cooldowns are authoritative server-side.
 - No shell commands, user file paths, database, or arbitrary code execution are exposed.
 - Nginx adds basic security headers and handles TLS.
+- Cloudflare sits in front of the VPS. App-level throttles are still kept because Nginx per-IP limits require correct Cloudflare real IP handling or Cloudflare-side WAF/rate-limit rules.
 
 ## Performance Notes
 

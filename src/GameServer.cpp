@@ -17,6 +17,14 @@ namespace arena
     {
       return j.contains(key) && j.at(key).is_boolean() && j.at(key).get<bool>();
     }
+
+    template <typename Clock>
+    std::int64_t remainingMs(std::chrono::time_point<Clock> until, std::chrono::time_point<Clock> now)
+    {
+      return std::max<std::int64_t>(
+          0,
+          std::chrono::duration_cast<std::chrono::milliseconds>(until - now).count());
+    }
   }
 
   GameServer::GameServer()
@@ -125,6 +133,10 @@ namespace arena
     {
       handlePing(session, message);
     }
+    else if (type == "ability")
+    {
+      handleAbility(session, message);
+    }
     else
     {
       send(session, errorMessage("unknown message type"));
@@ -163,36 +175,52 @@ namespace arena
       }
       else
       {
-        const std::uint64_t n = nextPlayerNumber_++;
-        std::string name = sanitizeDisplayName(requested);
-        if (name.empty())
+        if (players_.size() >= maxPlayers_)
         {
-          name = makeGuestName(n);
+          welcome = errorMessage("arena full");
+          history.clear();
+          snapshot.clear();
+          newPlayer = false;
         }
+        else
+        {
+          const std::uint64_t n = nextPlayerNumber_++;
+          std::string name = sanitizeDisplayName(requested);
+          if (name.empty())
+          {
+            name = makeGuestName(n);
+          }
 
-        auto [x, y] = world_.randomSpawn(rng_);
-        Player player;
-        player.id = makePlayerId(n);
-        player.name = name;
-        player.color = randomColor();
-        player.x = x;
-        player.y = y;
-        player.session = session->shared_from_this();
-        player.lastSeen = std::chrono::steady_clock::now();
-        player.lastChat = player.lastSeen - std::chrono::seconds(10);
-        player.speedBoostUntil = player.lastSeen;
+          auto [x, y] = world_.randomSpawn(rng_);
+          Player player;
+          player.id = makePlayerId(n);
+          player.name = name;
+          player.color = randomColor();
+          player.x = x;
+          player.y = y;
+          player.session = session->shared_from_this();
+          player.lastSeen = std::chrono::steady_clock::now();
+          player.lastInput = player.lastSeen - std::chrono::seconds(1);
+          player.lastChat = player.lastSeen - std::chrono::seconds(10);
+          player.speedBoostUntil = player.lastSeen;
+          player.dashReadyAt = player.lastSeen;
+          player.shieldUntil = player.lastSeen;
+          player.shieldReadyAt = player.lastSeen;
+          player.magnetUntil = player.lastSeen;
+          player.magnetReadyAt = player.lastSeen;
 
-        const std::string id = player.id;
-        const std::string playerName = player.name;
-        sessionToPlayer_[session] = id;
-        players_[id] = std::move(player);
-        addEventLocked("join", playerName + " joined the arena");
+          const std::string id = player.id;
+          const std::string playerName = player.name;
+          sessionToPlayer_[session] = id;
+          players_[id] = std::move(player);
+          addEventLocked("join", playerName + " joined the arena");
 
-        welcome = {{"type", "welcome"}, {"id", id}, {"world", worldSummary(world_)}};
-        joined = {{"type", "player_joined"}, {"id", id}, {"name", playerName}};
-        snapshot = snapshotLocked();
-        history.assign(chatHistory_.begin(), chatHistory_.end());
-        newPlayer = true;
+          welcome = {{"type", "welcome"}, {"id", id}, {"world", worldSummary(world_)}};
+          joined = {{"type", "player_joined"}, {"id", id}, {"name", playerName}};
+          snapshot = snapshotLocked();
+          history.assign(chatHistory_.begin(), chatHistory_.end());
+          newPlayer = true;
+        }
       }
     }
 
@@ -203,7 +231,10 @@ namespace arena
       {
         send(session, {{"type", "chat_history"}, {"messages", history}});
       }
-      send(session, snapshot);
+      if (!snapshot.empty())
+      {
+        send(session, snapshot);
+      }
     }
 
     if (newPlayer)
@@ -227,6 +258,13 @@ namespace arena
       return;
     }
 
+    const auto now = std::chrono::steady_clock::now();
+    if (now - pit->second.lastInput < std::chrono::milliseconds(35))
+    {
+      pit->second.lastSeen = now;
+      return;
+    }
+    pit->second.lastInput = now;
     pit->second.input.up = jsonBool(message, "up");
     pit->second.input.down = jsonBool(message, "down");
     pit->second.input.left = jsonBool(message, "left");
@@ -235,7 +273,7 @@ namespace arena
     {
       pit->second.input.seq = message["seq"].get<std::uint64_t>();
     }
-    pit->second.lastSeen = std::chrono::steady_clock::now();
+    pit->second.lastSeen = now;
   }
 
   void GameServer::handleChat(ClientConnection *session, const nlohmann::json &message)
@@ -320,6 +358,87 @@ namespace arena
     send(session, pong);
   }
 
+  void GameServer::handleAbility(ClientConnection *session, const nlohmann::json &message)
+  {
+    if (!message.contains("ability") || !message["ability"].is_string())
+    {
+      send(session, errorMessage("ability must be a string"));
+      return;
+    }
+
+    const std::string ability = message["ability"].get<std::string>();
+    nlohmann::json outgoing;
+    bool accepted = false;
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto sit = sessionToPlayer_.find(session);
+      if (sit == sessionToPlayer_.end())
+      {
+        return;
+      }
+      auto pit = players_.find(sit->second);
+      if (pit == players_.end())
+      {
+        return;
+      }
+
+      Player &player = pit->second;
+      const auto now = std::chrono::steady_clock::now();
+      player.lastSeen = now;
+
+      if (ability == "dash")
+      {
+        if (now < player.dashReadyAt)
+        {
+          send(session, errorMessage("dash cooldown"));
+          return;
+        }
+        player.dashReadyAt = now + std::chrono::milliseconds(dashCooldownMs_);
+        applyDashLocked(player, now);
+        addEventLocked("dash", player.name + " dashed");
+        outgoing = {{"type", "ability"}, {"id", player.id}, {"ability", "dash"}, {"timestamp", isoTimestampUtc()}};
+        accepted = true;
+      }
+      else if (ability == "shield")
+      {
+        if (now < player.shieldReadyAt)
+        {
+          send(session, errorMessage("shield cooldown"));
+          return;
+        }
+        player.shieldUntil = now + std::chrono::milliseconds(shieldDurationMs_);
+        player.shieldReadyAt = now + std::chrono::milliseconds(shieldCooldownMs_);
+        addEventLocked("shield", player.name + " phased through obstacles");
+        outgoing = {{"type", "ability"}, {"id", player.id}, {"ability", "shield"}, {"timestamp", isoTimestampUtc()}};
+        accepted = true;
+      }
+      else if (ability == "magnet")
+      {
+        if (now < player.magnetReadyAt)
+        {
+          send(session, errorMessage("magnet cooldown"));
+          return;
+        }
+        player.magnetUntil = now + std::chrono::milliseconds(magnetDurationMs_);
+        player.magnetReadyAt = now + std::chrono::milliseconds(magnetCooldownMs_);
+        addEventLocked("magnet", player.name + " activated magnet");
+        outgoing = {{"type", "ability"}, {"id", player.id}, {"ability", "magnet"}, {"timestamp", isoTimestampUtc()}};
+        accepted = true;
+      }
+      else
+      {
+        send(session, errorMessage("unknown ability"));
+        return;
+      }
+    }
+
+    if (accepted)
+    {
+      broadcast(outgoing);
+    }
+  }
+
   void GameServer::tickLoop()
   {
     using clock = std::chrono::steady_clock;
@@ -380,16 +499,19 @@ namespace arena
       {
         dx /= len;
         dy /= len;
+        player.facingX = dx;
+        player.facingY = dy;
       }
 
       const double speed = playerSpeed_ * (now < player.speedBoostUntil ? speedBoostMultiplier_ : 1.0);
       const double nextX = player.x + dx * speed * dt;
       const double nextY = player.y + dy * speed * dt;
+      const bool phasing = now < player.shieldUntil;
 
       double candidateX = nextX;
       double candidateY = player.y;
       world_.clampToBounds(candidateX, candidateY);
-      if (!world_.collides(candidateX, candidateY))
+      if (phasing || !world_.collides(candidateX, candidateY))
       {
         player.x = candidateX;
       }
@@ -397,7 +519,7 @@ namespace arena
       candidateX = player.x;
       candidateY = nextY;
       world_.clampToBounds(candidateX, candidateY);
-      if (!world_.collides(candidateX, candidateY))
+      if (phasing || !world_.collides(candidateX, candidateY))
       {
         player.y = candidateY;
       }
@@ -482,12 +604,20 @@ namespace arena
     for (auto &[_, player] : players_)
     {
       player.score = 0;
+      player.orbQuestProgress = 0;
       player.controlCarry = 0.0;
       auto [x, y] = world_.randomSpawn(rng_);
       player.x = x;
       player.y = y;
       player.input = {};
       player.speedBoostUntil = now;
+      player.dashReadyAt = now;
+      player.shieldUntil = now;
+      player.shieldReadyAt = now;
+      player.magnetUntil = now;
+      player.magnetReadyAt = now;
+      player.facingX = 1.0;
+      player.facingY = 0.0;
     }
 
     addEventLocked("round_start", "Round " + std::to_string(roundNumber_) + " started");
@@ -497,6 +627,8 @@ namespace arena
   {
     const double pickupRadius = World::playerRadius + orbRadius_;
     const double pickupRadiusSq = pickupRadius * pickupRadius;
+    const double magnetRadiusSq = magnetRadius_ * magnetRadius_;
+    const auto now = std::chrono::steady_clock::now();
 
     for (auto &[_, player] : players_)
     {
@@ -504,11 +636,30 @@ namespace arena
       {
         const double dx = player.x - orb.x;
         const double dy = player.y - orb.y;
-        if (dx * dx + dy * dy <= pickupRadiusSq)
+        const double distSq = dx * dx + dy * dy;
+        if (now < player.magnetUntil && distSq < magnetRadiusSq && distSq > pickupRadiusSq)
+        {
+          const double dist = std::sqrt(distSq);
+          const double pull = std::min(18.0, dist);
+          orb.x += (dx / dist) * pull;
+          orb.y += (dy / dist) * pull;
+        }
+
+        const double pickupDx = player.x - orb.x;
+        const double pickupDy = player.y - orb.y;
+        if (pickupDx * pickupDx + pickupDy * pickupDy <= pickupRadiusSq)
         {
           player.score += orb.value;
+          player.orbQuestProgress += 1;
           ++totalOrbPickups_;
           addEventLocked("orb", player.name + " collected +" + std::to_string(orb.value));
+          if (player.orbQuestProgress >= orbQuestGoal_)
+          {
+            player.orbQuestProgress = 0;
+            player.score += orbQuestReward_;
+            ++totalQuestsCompleted_;
+            addEventLocked("quest", player.name + " completed Orb Run +" + std::to_string(orbQuestReward_));
+          }
           orb = spawnOrbLocked();
         }
       }
@@ -542,6 +693,7 @@ namespace arena
   void GameServer::handleControlZoneLocked(double dt)
   {
     const double zoneSq = controlZoneRadius_ * controlZoneRadius_;
+    std::vector<Player *> occupants;
 
     for (auto &[_, player] : players_)
     {
@@ -552,15 +704,59 @@ namespace arena
         player.controlCarry = 0.0;
         continue;
       }
+      occupants.push_back(&player);
+    }
 
-      player.controlCarry += dt * controlPointsPerSecond_;
-      const int wholePoints = static_cast<int>(player.controlCarry);
-      if (wholePoints > 0)
+    if (occupants.size() != 1)
+    {
+      for (Player *player : occupants)
       {
-        player.score += wholePoints;
-        totalControlZonePoints_ += static_cast<std::uint64_t>(wholePoints);
-        player.controlCarry -= wholePoints;
+        player->controlCarry = 0.0;
       }
+      return;
+    }
+
+    Player &holder = *occupants.front();
+    holder.controlCarry += dt * controlPointsPerSecond_;
+    const int wholePoints = static_cast<int>(holder.controlCarry);
+    if (wholePoints > 0)
+    {
+      holder.score += wholePoints;
+      totalControlZonePoints_ += static_cast<std::uint64_t>(wholePoints);
+      holder.controlCarry -= wholePoints;
+    }
+  }
+
+  void GameServer::applyDashLocked(Player &player, std::chrono::steady_clock::time_point now)
+  {
+    double dx = player.facingX;
+    double dy = player.facingY;
+    const double len = std::sqrt(dx * dx + dy * dy);
+    if (len <= 0.0)
+    {
+      dx = 1.0;
+      dy = 0.0;
+    }
+    else
+    {
+      dx /= len;
+      dy /= len;
+    }
+
+    const bool phasing = now < player.shieldUntil;
+    constexpr int steps = 8;
+    const double step = dashDistance_ / static_cast<double>(steps);
+    for (int i = 0; i < steps; ++i)
+    {
+      double candidateX = player.x + dx * step;
+      double candidateY = player.y + dy * step;
+      world_.clampToBounds(candidateX, candidateY);
+      if (!phasing && world_.collides(candidateX, candidateY))
+      {
+        break;
+      }
+      player.x = candidateX;
+      player.y = candidateY;
     }
   }
 
@@ -863,6 +1059,7 @@ namespace arena
     return {
         {"service", "vix-arena"},
         {"connectedPlayers", players_.size()},
+        {"maxPlayers", maxPlayers_},
         {"uptimeSeconds", uptimeSeconds(startedAt_)},
         {"tickRateTarget", tickRateTarget_},
         {"totalConnectionsSinceStart", totalConnections_},
@@ -870,6 +1067,7 @@ namespace arena
         {"totalOrbPickupsSinceStart", totalOrbPickups_},
         {"totalControlZonePointsSinceStart", totalControlZonePoints_},
         {"totalPowerupsSinceStart", totalPowerupsSinceStart_},
+        {"totalQuestsCompletedSinceStart", totalQuestsCompleted_},
         {"roundNumber", roundNumber_},
         {"totalRoundsCompletedSinceStart", totalRoundsCompleted_}};
   }
