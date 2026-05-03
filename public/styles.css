@@ -247,6 +247,35 @@ button {
   font-weight: 750;
 }
 
+.events-panel {
+  position: absolute;
+  left: 18px;
+  bottom: 160px;
+  width: min(280px, calc(100% - 36px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.event-feed {
+  display: grid;
+  gap: 6px;
+  max-height: 140px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.event-line {
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.event-line strong {
+  color: var(--warn);
+  font-weight: 750;
+}
+
 .chat-log {
   padding: 10px;
   overflow: auto;
@@ -302,6 +331,12 @@ button {
   }
 
   .leaderboard-panel {
+    left: 12px;
+    bottom: 288px;
+    width: min(260px, calc(100% - 24px));
+  }
+
+  .events-panel {
     left: 12px;
     bottom: 196px;
     width: min(260px, calc(100% - 24px));

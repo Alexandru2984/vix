@@ -59,6 +59,14 @@ namespace arena
       std::string color{"#c9a7ff"};
     };
 
+    struct GameEvent
+    {
+      std::uint64_t id{0};
+      std::string type;
+      std::string text;
+      std::string timestamp;
+    };
+
     using SessionPtr = std::shared_ptr<ClientConnection>;
 
     void handleJoin(ClientConnection *session, const nlohmann::json &message);
@@ -76,12 +84,14 @@ namespace arena
     void handleOrbPickupsLocked();
     void handlePowerupPickupsLocked();
     void handleControlZoneLocked(double dt);
+    void addEventLocked(std::string type, std::string text);
     void cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents);
     [[nodiscard]] nlohmann::json snapshotLocked() const;
     [[nodiscard]] nlohmann::json orbsJsonLocked() const;
     [[nodiscard]] nlohmann::json powerupsJsonLocked() const;
     [[nodiscard]] nlohmann::json controlZoneJson() const;
     [[nodiscard]] nlohmann::json roundJsonLocked() const;
+    [[nodiscard]] nlohmann::json eventsJsonLocked() const;
     [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked() const;
 
     void send(ClientConnection *session, const nlohmann::json &message);
@@ -97,6 +107,7 @@ namespace arena
     std::unordered_map<std::string, Player> players_;
     std::unordered_map<ClientConnection *, std::string> sessionToPlayer_;
     std::deque<nlohmann::json> chatHistory_;
+    std::deque<GameEvent> eventHistory_;
     std::vector<Orb> orbs_;
     std::vector<Powerup> powerups_;
     std::mt19937 rng_;
@@ -112,6 +123,7 @@ namespace arena
     std::uint64_t totalPowerupsSinceStart_{0};
     std::uint64_t nextOrbNumber_{1};
     std::uint64_t nextPowerupNumber_{1};
+    std::uint64_t nextEventNumber_{1};
     std::uint64_t roundNumber_{1};
     std::uint64_t totalRoundsCompleted_{0};
     std::chrono::steady_clock::time_point roundStartedAt_;

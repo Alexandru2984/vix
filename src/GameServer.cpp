@@ -186,6 +186,7 @@ namespace arena
         const std::string playerName = player.name;
         sessionToPlayer_[session] = id;
         players_[id] = std::move(player);
+        addEventLocked("join", playerName + " joined the arena");
 
         welcome = {{"type", "welcome"}, {"id", id}, {"world", worldSummary(world_)}};
         joined = {{"type", "player_joined"}, {"id", id}, {"name", playerName}};
@@ -465,6 +466,7 @@ namespace arena
     intermission_ = true;
     intermissionUntil_ = now + std::chrono::seconds(intermissionSeconds_);
     ++totalRoundsCompleted_;
+    addEventLocked("round_end", lastWinnerName_ + " won round " + std::to_string(roundNumber_) + " with " + std::to_string(lastWinnerScore_) + " points");
   }
 
   void GameServer::startNextRoundLocked(std::chrono::steady_clock::time_point now)
@@ -487,6 +489,8 @@ namespace arena
       player.input = {};
       player.speedBoostUntil = now;
     }
+
+    addEventLocked("round_start", "Round " + std::to_string(roundNumber_) + " started");
   }
 
   void GameServer::handleOrbPickupsLocked()
@@ -504,6 +508,7 @@ namespace arena
         {
           player.score += orb.value;
           ++totalOrbPickups_;
+          addEventLocked("orb", player.name + " collected +" + std::to_string(orb.value));
           orb = spawnOrbLocked();
         }
       }
@@ -527,6 +532,7 @@ namespace arena
           player.speedBoostUntil = now + std::chrono::milliseconds(
                                              static_cast<int>(powerup.durationSeconds * 1000.0));
           ++totalPowerupsSinceStart_;
+          addEventLocked("powerup", player.name + " grabbed speed boost");
           powerup = spawnPowerupLocked();
         }
       }
@@ -555,6 +561,21 @@ namespace arena
         totalControlZonePoints_ += static_cast<std::uint64_t>(wholePoints);
         player.controlCarry -= wholePoints;
       }
+    }
+  }
+
+  void GameServer::addEventLocked(std::string type, std::string text)
+  {
+    eventHistory_.push_back({
+        nextEventNumber_++,
+        std::move(type),
+        std::move(text),
+        isoTimestampUtc(),
+    });
+
+    while (eventHistory_.size() > 24)
+    {
+      eventHistory_.pop_front();
     }
   }
 
@@ -599,6 +620,7 @@ namespace arena
         {"powerups", powerupsJsonLocked()},
         {"controlZone", controlZoneJson()},
         {"round", roundJsonLocked()},
+        {"events", eventsJsonLocked()},
         {"serverTime", isoTimestampUtc()}};
   }
 
@@ -671,6 +693,20 @@ namespace arena
                            {"name", lastWinnerName_},
                            {"score", lastWinnerScore_},
                        }}};
+  }
+
+  nlohmann::json GameServer::eventsJsonLocked() const
+  {
+    nlohmann::json events = nlohmann::json::array();
+    for (const auto &event : eventHistory_)
+    {
+      events.push_back({
+          {"id", event.id},
+          {"type", event.type},
+          {"text", event.text},
+          {"timestamp", event.timestamp}});
+    }
+    return events;
   }
 
   std::vector<GameServer::SessionPtr> GameServer::liveSessionsLocked() const
@@ -817,7 +853,8 @@ namespace arena
         {"orbs", orbsJsonLocked()},
         {"powerups", powerupsJsonLocked()},
         {"controlZone", controlZoneJson()},
-        {"round", roundJsonLocked()}};
+        {"round", roundJsonLocked()},
+        {"events", eventsJsonLocked()}};
   }
 
   nlohmann::json GameServer::statsJson() const

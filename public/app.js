@@ -14,6 +14,7 @@
   const chatInput = document.getElementById("chatInput");
   const leaderboardEl = document.getElementById("leaderboard");
   const roundBanner = document.getElementById("roundBanner");
+  const eventFeed = document.getElementById("eventFeed");
 
   const state = {
     ws: null,
@@ -24,6 +25,8 @@
     powerups: [],
     controlZone: { x: 1000, y: 600, radius: 150, pointsPerSecond: 2 },
     round: { number: 1, phase: "active", secondsRemaining: 180, lastWinner: { name: "No winner yet", score: 0 } },
+    events: [],
+    seenEvents: new Set(),
     players: new Map(),
     renderPlayers: new Map(),
     keys: { up: false, down: false, left: false, right: false },
@@ -107,6 +110,7 @@
       state.powerups = Array.isArray(msg.powerups) ? msg.powerups : state.powerups;
       state.controlZone = msg.controlZone || state.controlZone;
       state.round = msg.round || state.round;
+      applyEvents(msg.events || []);
       updateRoundHud();
     } else if (msg.type === "chat") {
       appendChat(msg.from || "server", msg.message || "");
@@ -186,6 +190,32 @@
     } else {
       roundBanner.classList.add("hidden");
       roundBanner.textContent = "";
+    }
+  }
+
+  function applyEvents(events) {
+    let changed = false;
+    for (const event of events) {
+      if (!event || typeof event.id !== "number" || state.seenEvents.has(event.id)) continue;
+      state.seenEvents.add(event.id);
+      state.events.unshift(event);
+      changed = true;
+    }
+    state.events = state.events.slice(0, 8);
+    if (changed) renderEvents();
+  }
+
+  function renderEvents() {
+    eventFeed.replaceChildren();
+    for (const event of state.events.slice(0, 6)) {
+      const line = document.createElement("div");
+      line.className = "event-line";
+      const label = document.createElement("strong");
+      label.textContent = event.type || "event";
+      const text = document.createElement("span");
+      text.textContent = ` ${event.text || ""}`;
+      line.append(label, text);
+      eventFeed.append(line);
     }
   }
 
@@ -310,6 +340,55 @@
     ctx.stroke();
   }
 
+  function drawMinimap(viewW, viewH) {
+    const mapW = Math.min(220, viewW * 0.22);
+    const mapH = mapW * (state.world.height / state.world.width);
+    const x = viewW - mapW - 18;
+    const y = 18;
+    const sx = mapW / state.world.width;
+    const sy = mapH / state.world.height;
+
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "rgba(13,17,23,0.82)";
+    ctx.strokeStyle = "rgba(160,180,210,0.24)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, mapW, mapH);
+    ctx.strokeRect(x, y, mapW, mapH);
+
+    ctx.fillStyle = "rgba(255,204,102,0.28)";
+    for (const o of state.world.obstacles || []) {
+      ctx.fillRect(x + o.x * sx, y + o.y * sy, o.w * sx, o.h * sy);
+    }
+
+    ctx.fillStyle = "rgba(122,245,155,0.32)";
+    const zone = state.controlZone;
+    if (zone) {
+      ctx.beginPath();
+      ctx.arc(x + zone.x * sx, y + zone.y * sy, zone.radius * sx, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const orb of state.orbs) {
+      ctx.fillStyle = orb.color || "#66ccff";
+      ctx.fillRect(x + orb.x * sx - 1.5, y + orb.y * sy - 1.5, 3, 3);
+    }
+
+    for (const powerup of state.powerups) {
+      ctx.fillStyle = powerup.color || "#c9a7ff";
+      ctx.fillRect(x + powerup.x * sx - 2, y + powerup.y * sy - 2, 4, 4);
+    }
+
+    for (const p of state.players.values()) {
+      ctx.fillStyle = p.id === state.localId ? "#ffffff" : p.color || "#66ccff";
+      ctx.beginPath();
+      ctx.arc(x + p.x * sx, y + p.y * sy, p.id === state.localId ? 4 : 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   function render() {
     resize();
     updateRenderPlayers();
@@ -432,6 +511,7 @@
       ctx.fillText(String(p.score || 0), p.x, p.y + 39);
     }
     ctx.restore();
+    drawMinimap(viewW, viewH);
 
     requestAnimationFrame(render);
   }

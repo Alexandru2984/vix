@@ -10,7 +10,7 @@ Vix.cpp v2.5.2 was installed and evaluated on this VPS. Its HTTP listener did no
 - Collectible orb pickups with server-authoritative scoring.
 - Temporary speed powerups with server-authoritative boost timers.
 - Central control zone that grants passive points while occupied.
-- Live leaderboard and local score HUD.
+- Live leaderboard, arena event feed, minimap, and local score HUD.
 - WebSocket join, input, chat, ping/pong, and snapshot messages.
 - 20 ticks/sec server loop with low-cost full snapshots for v1.
 - In-memory chat history for the last 50 messages.
@@ -119,7 +119,7 @@ Server messages:
 
 ```json
 {"type":"welcome","id":"p-1","world":{"width":2000,"height":1200,"obstacles":[]}}
-{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180}}
+{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[{"id":1,"type":"orb","text":"Micu collected +5","timestamp":"2026-05-03T17:00:00Z"}]}
 {"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}
 {"type":"player_joined","id":"p-1","name":"Micu"}
 {"type":"player_left","id":"p-1"}
@@ -179,7 +179,7 @@ ss -ltnp | grep vix-arena
 
 - State is in memory and intentionally small.
 - The target tick rate is 20 ticks/sec.
-- Snapshots are compact JSON and include players, scores, boost timers, active orbs, powerups, round state, and control-zone metadata.
+- Snapshots are compact JSON and include players, scores, boost timers, active orbs, powerups, round state, event feed, and control-zone metadata.
 - The design should handle 20-50 connected players for v1 on a small VPS.
 
 ## Limitations / TODOs
