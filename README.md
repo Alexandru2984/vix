@@ -10,6 +10,7 @@ Vix.cpp v2.5.2 was installed and evaluated on this VPS. Its HTTP listener did no
 - Collectible orb pickups with server-authoritative scoring and score feedback effects.
 - Temporary speed powerups with server-authoritative boost timers.
 - Server-authoritative abilities: dash, shield/phasing, and magnet.
+- Server-side bots fill the arena for solo play when humans are connected.
 - Contested central control zone that grants passive points only when one player holds it.
 - Orb Run mini quest: every 3 orb pickups grants a server-authoritative bonus.
 - Live leaderboard, arena event feed, minimap, objective HUD, edge target markers, score popups, and local score HUD.
@@ -136,6 +137,7 @@ Server messages:
 - `GET /health` returns status, service name, player count, and uptime.
 - `GET /api/state` returns player count, world size, obstacles, current orbs, speed powerups, round state, and control zone metadata.
 - `GET /api/stats` returns connected players, max players, uptime, tick target, total connections, total chat messages, orb pickups, powerup pickups, rounds, and control-zone points.
+- Bot counters are included in `/health`, `/api/state`, and `/api/stats`.
 - `GET /docs` explains controls, protocol, endpoints, and limitations.
 - `GET /` serves the browser game.
 
@@ -208,6 +210,4 @@ ss -ltnp | grep vix-arena
 - Mobile support is intentionally lightweight for v1; advanced gestures, room setup, and landscape-specific UI modes are still TODOs.
 - Horizontal scaling would require external state or pub/sub.
 
-## Git
 
-Git commits and pushes are manual. The agent did not run `git add`, `git commit`, or `git push`.
