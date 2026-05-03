@@ -1,0 +1,22 @@
+# Build output
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
+# Runtime/local configuration
+.env
+*.log
+*.pid
+
+# Backups and generated artifacts
+*.bak
+*.bak.*
+*.tmp
+
+# Editor/OS files
+.DS_Store
+.idea/
+.vscode/
+*~

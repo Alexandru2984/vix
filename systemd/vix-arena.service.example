@@ -1,0 +1,22 @@
+[Unit]
+Description=VixArena C++ multiplayer sandbox
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=micu
+Group=micu
+WorkingDirectory=/home/micu/vix
+EnvironmentFile=/home/micu/vix/.env
+ExecStart=/home/micu/vix/build/vix-arena
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/micu/vix
+
+[Install]
+WantedBy=multi-user.target

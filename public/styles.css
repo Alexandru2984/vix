@@ -1,0 +1,241 @@
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: rgba(20, 26, 35, 0.92);
+  --panel-strong: rgba(28, 35, 47, 0.98);
+  --line: rgba(160, 180, 210, 0.18);
+  --text: #edf2f7;
+  --muted: #9aa8b8;
+  --accent: #66ccff;
+  --good: #7af59b;
+  --warn: #ffcc66;
+  --danger: #ff7aa8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  overflow: hidden;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 14px;
+  padding: 18px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.topbar p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.metrics strong {
+  color: var(--text);
+}
+
+.pill {
+  min-width: 84px;
+  text-align: center;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--warn);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pill.online {
+  color: var(--good);
+}
+
+.arena-wrap {
+  position: relative;
+  min-height: 0;
+  border: 1px solid var(--line);
+  background: #111822;
+  overflow: hidden;
+}
+
+#arena {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: calc(100vh - 92px);
+}
+
+.join-panel {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  width: min(360px, calc(100% - 36px));
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+
+.join-panel.hidden {
+  display: none;
+}
+
+.join-panel h2 {
+  font-size: 18px;
+  margin-bottom: 14px;
+}
+
+label {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.join-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+input,
+button {
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+input {
+  min-width: 0;
+  padding: 0 11px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+input:focus {
+  border-color: rgba(102, 204, 255, 0.72);
+}
+
+button {
+  padding: 0 15px;
+  color: #081018;
+  font-weight: 750;
+  cursor: pointer;
+  background: var(--accent);
+}
+
+.instructions {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chat-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: min(390px, calc(100% - 36px));
+  display: grid;
+  grid-template-rows: minmax(110px, 190px) 40px;
+  gap: 8px;
+}
+
+.chat-log {
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.chat-line {
+  margin-bottom: 7px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.chat-line b {
+  color: var(--accent);
+}
+
+#chatInput {
+  background: var(--panel-strong);
+}
+
+@media (max-width: 720px) {
+  body {
+    overflow: auto;
+  }
+
+  .shell {
+    min-height: 100dvh;
+    padding: 12px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .metrics {
+    justify-content: flex-start;
+  }
+
+  #arena {
+    min-height: 72dvh;
+  }
+
+  .chat-panel {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    grid-template-rows: minmax(88px, 130px) 40px;
+  }
+}

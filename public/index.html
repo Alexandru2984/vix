@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VixArena</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>VixArena</h1>
+          <p>Real-time C++ multiplayer sandbox</p>
+        </div>
+        <div class="metrics">
+          <span id="status" class="pill">offline</span>
+          <span><strong id="players">0</strong> players</span>
+          <span><strong id="ping">--</strong> ms</span>
+        </div>
+      </section>
+
+      <section class="arena-wrap">
+        <canvas id="arena" width="1280" height="720"></canvas>
+
+        <aside id="joinPanel" class="join-panel">
+          <h2>Join arena</h2>
+          <label for="nameInput">Display name</label>
+          <div class="join-row">
+            <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Guest">
+            <button id="joinBtn">Join</button>
+          </div>
+          <div class="instructions">
+            <span>WASD / arrow keys to move</span>
+            <span>Enter to chat</span>
+            <span>Esc to unfocus chat</span>
+          </div>
+        </aside>
+
+        <section class="chat-panel">
+          <div id="chatLog" class="chat-log"></div>
+          <input id="chatInput" maxlength="220" placeholder="Message">
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

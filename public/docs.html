@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VixArena Docs</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+      body { overflow: auto; }
+      .doc { max-width: 980px; margin: 0 auto; padding: 34px 18px 70px; line-height: 1.58; }
+      .doc h1 { font-size: 30px; margin-bottom: 10px; }
+      .doc h2 { margin-top: 28px; margin-bottom: 8px; font-size: 20px; }
+      .doc p, .doc li { color: var(--muted); }
+      .doc code, .doc pre { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 6px; }
+      .doc code { padding: 2px 5px; }
+      .doc pre { padding: 14px; overflow: auto; color: var(--text); }
+      .doc a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <article class="doc">
+      <h1>VixArena</h1>
+      <p>VixArena is a minimalist real-time 2D multiplayer sandbox built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, accepts WebSocket input, broadcasts snapshots at 20 ticks/sec, and serves a plain browser canvas frontend.</p>
+
+      <h2>Controls</h2>
+      <ul>
+        <li><code>WASD</code> or arrow keys move the player.</li>
+        <li><code>Enter</code> focuses chat.</li>
+        <li><code>Esc</code> unfocuses chat.</li>
+      </ul>
+
+      <h2>HTTP endpoints</h2>
+      <ul>
+        <li><code>GET /</code> game page.</li>
+        <li><code>GET /health</code> health JSON with service status, player count, and uptime.</li>
+        <li><code>GET /api/state</code> sanitized world state with player count, world size, and obstacles.</li>
+        <li><code>GET /api/stats</code> runtime counters and tick target.</li>
+        <li><code>GET /docs</code> this page.</li>
+      </ul>
+
+      <h2>WebSocket</h2>
+      <p>Public endpoint: <code>wss://vix.micutu.com/ws</code>. Browser clients automatically use <code>wss://</code> when the page is served over HTTPS.</p>
+
+      <h2>Client messages</h2>
+      <pre><code>{"type":"join","name":"Micu"}</code></pre>
+      <pre><code>{"type":"input","up":true,"down":false,"left":false,"right":true,"seq":123}</code></pre>
+      <pre><code>{"type":"chat","message":"salut"}</code></pre>
+      <pre><code>{"type":"ping","t":1710000000000}</code></pre>
+
+      <h2>Server messages</h2>
+      <pre><code>{"type":"welcome","id":"p-1","world":{"width":2000,"height":1200,"obstacles":[]}}</code></pre>
+      <pre><code>{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff"}]}</code></pre>
+      <pre><code>{"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}</code></pre>
+      <pre><code>{"type":"player_joined","id":"p-1","name":"Micu"}</code></pre>
+      <pre><code>{"type":"player_left","id":"p-1"}</code></pre>
+      <pre><code>{"type":"pong","t":1710000000000}</code></pre>
+
+      <h2>Validation and limits</h2>
+      <ul>
+        <li>Invalid JSON and unknown message types are rejected.</li>
+        <li>Display names are capped at 18 bytes and chat at 220 bytes.</li>
+        <li>WebSocket payloads are capped at 4096 bytes.</li>
+        <li>Movement is server-authoritative and clamped to world bounds and obstacles.</li>
+        <li>Chat is throttled per connection and the last 50 messages are kept in memory.</li>
+      </ul>
+
+      <h2>Limitations of v1</h2>
+      <ul>
+        <li>No persistence across restarts.</li>
+        <li>No accounts, private rooms, or anti-abuse identity layer.</li>
+        <li>Snapshots are full lightweight world snapshots rather than binary deltas.</li>
+        <li>Mobile controls are not implemented beyond responsive layout.</li>
+      </ul>
+    </article>
+  </body>
+</html>
