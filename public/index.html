@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VixArena</title>
-    <link rel="stylesheet" href="/styles.css?v=mobile-20260504">
+    <link rel="stylesheet" href="/styles.css?v=ux-20260504">
   </head>
   <body>
     <main class="shell">
@@ -26,6 +26,11 @@
       <section class="arena-wrap">
         <canvas id="arena" width="1280" height="720"></canvas>
         <div id="roundBanner" class="round-banner hidden"></div>
+        <div id="objectiveHud" class="objective-hud">
+          <span>Objective</span>
+          <strong id="objectiveLabel">Join arena</strong>
+          <em id="objectiveDistance">Ready</em>
+        </div>
 
         <aside id="joinPanel" class="join-panel">
           <h2>Join arena</h2>
@@ -62,7 +67,10 @@
 
         <nav class="mobile-actions" aria-label="Touch controls">
           <button id="mobileInfoBtn" class="mobile-action" type="button" aria-label="Toggle arena panels">i</button>
-          <button id="mobileChatBtn" class="mobile-action" type="button" aria-label="Open chat">✦</button>
+          <button id="mobileChatBtn" class="mobile-action" type="button" aria-label="Open chat">
+            <span id="mobileChatBadge" class="mobile-badge hidden">0</span>
+            ✦
+          </button>
         </nav>
 
         <div id="touchStick" class="touch-stick" aria-label="Movement joystick">
@@ -70,6 +78,6 @@
         </div>
       </section>
     </main>
-    <script src="/app.js?v=mobile-20260504"></script>
+    <script src="/app.js?v=ux-20260504"></script>
   </body>
 </html>

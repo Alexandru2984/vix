@@ -1,6 +1,7 @@
 (() => {
   const canvas = document.getElementById("arena");
   const ctx = canvas.getContext("2d");
+  const arenaWrap = document.querySelector(".arena-wrap");
   const statusEl = document.getElementById("status");
   const playersEl = document.getElementById("players");
   const scoreEl = document.getElementById("score");
@@ -19,6 +20,9 @@
   const touchKnob = document.getElementById("touchKnob");
   const mobileChatBtn = document.getElementById("mobileChatBtn");
   const mobileInfoBtn = document.getElementById("mobileInfoBtn");
+  const objectiveLabel = document.getElementById("objectiveLabel");
+  const objectiveDistance = document.getElementById("objectiveDistance");
+  const mobileChatBadge = document.getElementById("mobileChatBadge");
 
   const state = {
     ws: null,
@@ -37,6 +41,11 @@
     seq: 0,
     lastInputSent: "",
     touchPointerId: null,
+    touchCapture: null,
+    chatUnread: 0,
+    lastLocalScore: null,
+    floaters: [],
+    activeObjective: null,
     camera: { x: 1000, y: 600 },
     pingTimer: 0,
     reconnectTimer: 0,
@@ -122,7 +131,7 @@
     } else if (msg.type === "chat_history") {
       chatLog.replaceChildren();
       for (const item of msg.messages || []) {
-        appendChat(item.from || "server", item.message || "");
+        appendChat(item.from || "server", item.message || "", false);
       }
     } else if (msg.type === "player_joined") {
       appendSystem(`${msg.name || "Player"} joined`);
@@ -157,6 +166,18 @@
     }
     playersEl.textContent = String(state.players.size);
     const local = state.players.get(state.localId);
+    if (local && state.lastLocalScore !== null && (local.score || 0) > state.lastLocalScore) {
+      state.floaters.push({
+        x: local.x,
+        y: local.y - 30,
+        text: `+${(local.score || 0) - state.lastLocalScore}`,
+        color: local.color || "#ffcc66",
+        createdAt: performance.now()
+      });
+      state.floaters = state.floaters.slice(-8);
+    }
+    if (local) state.lastLocalScore = local.score || 0;
+    else state.lastLocalScore = null;
     scoreEl.textContent = String(local?.score || 0);
     boostEl.textContent = local?.boostMs > 0 ? `${Math.ceil(local.boostMs / 1000)}s` : "--";
     renderLeaderboard();
@@ -184,6 +205,84 @@
     const minutes = Math.floor(safe / 60);
     const seconds = Math.floor(safe % 60);
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function distance(a, b) {
+    return Math.hypot((a?.x || 0) - (b?.x || 0), (a?.y || 0) - (b?.y || 0));
+  }
+
+  function describeObjective(local) {
+    if (!state.joined || !local) {
+      return { label: "Join arena", detail: "Pick a name to enter", x: state.camera.x, y: state.camera.y, color: "#66ccff" };
+    }
+
+    if (state.round.phase === "intermission") {
+      return {
+        label: "Round reset",
+        detail: `Next round in ${formatTime(state.round.secondsRemaining)}`,
+        x: local.x,
+        y: local.y,
+        color: "#ffcc66"
+      };
+    }
+
+    const candidates = [];
+    for (const orb of state.orbs) {
+      if (!Number.isFinite(orb.x) || !Number.isFinite(orb.y)) continue;
+      candidates.push({
+        label: `${orb.value || 5}-point orb`,
+        detail: "Collect",
+        x: orb.x,
+        y: orb.y,
+        color: orb.color || "#66ccff",
+        dist: distance(local, orb)
+      });
+    }
+
+    for (const powerup of state.powerups) {
+      if (!Number.isFinite(powerup.x) || !Number.isFinite(powerup.y)) continue;
+      candidates.push({
+        label: "Speed boost",
+        detail: "Grab boost",
+        x: powerup.x,
+        y: powerup.y,
+        color: powerup.color || "#c9a7ff",
+        dist: distance(local, powerup) * 0.9
+      });
+    }
+
+    const zone = state.controlZone;
+    if (zone && Number.isFinite(zone.x) && Number.isFinite(zone.y)) {
+      const rawDist = distance(local, zone);
+      candidates.push({
+        label: rawDist <= (zone.radius || 0) ? "Hold control zone" : "Reach control zone",
+        detail: `+${zone.pointsPerSecond || 2}/s`,
+        x: zone.x,
+        y: zone.y,
+        color: "#7af59b",
+        dist: Math.max(0, rawDist - (zone.radius || 0)) * 0.75
+      });
+    }
+
+    if (!candidates.length) {
+      return { label: "Explore arena", detail: "Waiting for spawns", x: local.x, y: local.y, color: "#66ccff" };
+    }
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    const best = candidates[0];
+    best.realDist = Math.round(distance(local, best));
+    return best;
+  }
+
+  function updateObjective(local) {
+    const objective = describeObjective(local);
+    state.activeObjective = objective;
+    objectiveLabel.textContent = objective.label;
+    objectiveDistance.textContent = objective.realDist ? `${objective.detail} - ${objective.realDist}u` : objective.detail;
   }
 
   function updateRoundHud() {
@@ -234,7 +333,21 @@
     })[c]);
   }
 
-  function appendChat(from, message) {
+  function isMobileLayout() {
+    return window.matchMedia("(max-width: 720px)").matches;
+  }
+
+  function updateChatBadge() {
+    mobileChatBadge.textContent = String(Math.min(9, state.chatUnread));
+    mobileChatBadge.classList.toggle("hidden", state.chatUnread < 1);
+  }
+
+  function clearChatUnread() {
+    state.chatUnread = 0;
+    updateChatBadge();
+  }
+
+  function appendChat(from, message, notify = true) {
     const line = document.createElement("div");
     line.className = "chat-line";
     const name = document.createElement("b");
@@ -244,6 +357,10 @@
     line.append(name, text);
     chatLog.append(line);
     chatLog.scrollTop = chatLog.scrollHeight;
+    if (notify && isMobileLayout() && !document.body.classList.contains("show-chat")) {
+      state.chatUnread += 1;
+      updateChatBadge();
+    }
   }
 
   function appendSystem(message) {
@@ -271,13 +388,51 @@
   }
 
   function resetTouchInput() {
+    if (state.touchCapture && state.touchPointerId !== null) {
+      try {
+        state.touchCapture.releasePointerCapture(state.touchPointerId);
+      } catch {
+        // Pointer capture may already be released by the browser.
+      }
+    }
     state.touchPointerId = null;
+    state.touchCapture = null;
+    touchStick.classList.remove("floating");
+    touchStick.style.left = "";
+    touchStick.style.top = "";
+    touchStick.style.bottom = "";
     touchKnob.style.transform = "translate(-50%, -50%)";
     state.keys.left = false;
     state.keys.right = false;
     state.keys.up = false;
     state.keys.down = false;
     sendInput(true);
+  }
+
+  function positionFloatingStick(event) {
+    const wrap = arenaWrap.getBoundingClientRect();
+    const size = touchStick.offsetWidth || 128;
+    const pad = 10;
+    const left = clamp(event.clientX - wrap.left - size / 2, pad, Math.max(pad, wrap.width - size - pad));
+    const top = clamp(event.clientY - wrap.top - size / 2, pad, Math.max(pad, wrap.height - size - pad));
+    touchStick.classList.add("floating");
+    touchStick.style.left = `${left}px`;
+    touchStick.style.top = `${top}px`;
+    touchStick.style.bottom = "auto";
+  }
+
+  function startTouchMove(event, floating) {
+    if (state.touchPointerId !== null) return;
+    event.preventDefault();
+    if (floating) positionFloatingStick(event);
+    state.touchPointerId = event.pointerId;
+    state.touchCapture = floating ? arenaWrap : touchStick;
+    try {
+      state.touchCapture.setPointerCapture(event.pointerId);
+    } catch {
+      // Some mobile browsers expose pointer events without capture support.
+    }
+    updateTouchStick(event);
   }
 
   function updateTouchStick(event) {
@@ -293,6 +448,15 @@
     const y = rawY * scale;
     touchKnob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
     setTouchInput(x / max, y / max);
+  }
+
+  function canStartFloatingTouch(event) {
+    if (!isMobileLayout() || event.pointerType === "mouse" || !state.joined) return false;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest("input, button, .join-panel, .chat-panel, .mobile-actions, .leaderboard-panel, .events-panel, .touch-stick")) {
+      return false;
+    }
+    return target === canvas || target === arenaWrap;
   }
 
   function keyMap(key, value) {
@@ -349,29 +513,33 @@
   });
 
   touchStick.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    state.touchPointerId = event.pointerId;
-    touchStick.setPointerCapture(event.pointerId);
-    updateTouchStick(event);
+    startTouchMove(event, false);
   });
 
-  touchStick.addEventListener("pointermove", (event) => {
+  arenaWrap.addEventListener("pointerdown", (event) => {
+    if (canStartFloatingTouch(event)) startTouchMove(event, true);
+  });
+
+  window.addEventListener("pointermove", (event) => {
     if (event.pointerId !== state.touchPointerId) return;
     event.preventDefault();
     updateTouchStick(event);
   });
 
-  touchStick.addEventListener("pointerup", (event) => {
+  window.addEventListener("pointerup", (event) => {
     if (event.pointerId !== state.touchPointerId) return;
     event.preventDefault();
     resetTouchInput();
   });
 
-  touchStick.addEventListener("pointercancel", resetTouchInput);
+  window.addEventListener("pointercancel", (event) => {
+    if (event.pointerId === state.touchPointerId) resetTouchInput();
+  });
 
   mobileChatBtn.addEventListener("click", () => {
     document.body.classList.toggle("show-chat");
     if (document.body.classList.contains("show-chat")) {
+      clearChatUnread();
       chatInput.focus();
     } else {
       chatInput.blur();
@@ -462,7 +630,65 @@
     ctx.restore();
   }
 
+  function drawObjectiveMarker(viewW, viewH, left, top) {
+    const objective = state.activeObjective;
+    if (!objective || !objective.realDist) return;
+
+    const screenX = objective.x - left;
+    const screenY = objective.y - top;
+    const margin = 32;
+    const visible = screenX > margin && screenX < viewW - margin && screenY > margin && screenY < viewH - margin;
+    if (visible) return;
+
+    const markerX = clamp(screenX, margin, viewW - margin);
+    const markerY = clamp(screenY, margin, viewH - margin);
+    const angle = Math.atan2(screenY - viewH / 2, screenX - viewW / 2);
+
+    ctx.save();
+    ctx.translate(markerX, markerY);
+    ctx.rotate(angle);
+    ctx.fillStyle = objective.color || "#66ccff";
+    ctx.shadowColor = objective.color || "#66ccff";
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(-8, -8);
+    ctx.lineTo(-4, 0);
+    ctx.lineTo(-8, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = markerX > viewW * 0.5 ? "right" : "left";
+    ctx.fillStyle = "#edf2f7";
+    ctx.shadowColor = "rgba(13,17,23,0.95)";
+    ctx.shadowBlur = 8;
+    const labelX = markerX > viewW * 0.5 ? markerX - 18 : markerX + 18;
+    ctx.fillText(`${objective.label} ${objective.realDist}u`, labelX, clamp(markerY + 4, 18, viewH - 18));
+    ctx.restore();
+  }
+
+  function drawFloaters(now) {
+    state.floaters = state.floaters.filter((floater) => now - floater.createdAt < 1100);
+    for (const floater of state.floaters) {
+      const age = now - floater.createdAt;
+      const progress = age / 1100;
+      ctx.save();
+      ctx.globalAlpha = 1 - progress;
+      ctx.font = "700 18px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = floater.color || "#ffcc66";
+      ctx.shadowColor = "rgba(13,17,23,0.95)";
+      ctx.shadowBlur = 8;
+      ctx.fillText(floater.text, floater.x, floater.y - progress * 42);
+      ctx.restore();
+    }
+  }
+
   function render() {
+    const now = performance.now();
     resize();
     updateRenderPlayers();
 
@@ -473,6 +699,7 @@
       state.camera.x += (local.x - state.camera.x) * 0.12;
       state.camera.y += (local.y - state.camera.y) * 0.12;
     }
+    updateObjective(local);
 
     const left = state.camera.x - viewW / 2;
     const top = state.camera.y - viewH / 2;
@@ -491,7 +718,7 @@
 
     const zone = state.controlZone;
     if (zone) {
-      const pulse = 0.5 + Math.sin((performance.now() - state.startedAt) / 520) * 0.12;
+      const pulse = 0.5 + Math.sin((now - state.startedAt) / 520) * 0.12;
       ctx.beginPath();
       ctx.fillStyle = `rgba(122,245,155,${0.12 + pulse * 0.04})`;
       ctx.strokeStyle = "rgba(122,245,155,0.58)";
@@ -514,7 +741,7 @@
     }
 
     for (const orb of state.orbs) {
-      const t = (performance.now() - state.startedAt) / 450 + Number(String(orb.id || "0").replace(/\D/g, "")) * 0.3;
+      const t = (now - state.startedAt) / 450 + Number(String(orb.id || "0").replace(/\D/g, "")) * 0.3;
       const radius = 10 + Math.sin(t) * 2 + (orb.value > 5 ? 3 : 0);
       ctx.beginPath();
       ctx.shadowColor = orb.color || "#66ccff";
@@ -535,7 +762,7 @@
     }
 
     for (const powerup of state.powerups) {
-      const t = (performance.now() - state.startedAt) / 380;
+      const t = (now - state.startedAt) / 380;
       const size = 15 + Math.sin(t) * 2;
       ctx.save();
       ctx.translate(powerup.x, powerup.y);
@@ -583,7 +810,9 @@
       ctx.fillStyle = "#ffcc66";
       ctx.fillText(String(p.score || 0), p.x, p.y + 39);
     }
+    drawFloaters(now);
     ctx.restore();
+    drawObjectiveMarker(viewW, viewH, left, top);
     drawMinimap(viewW, viewH);
 
     requestAnimationFrame(render);

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VixArena Docs</title>
-    <link rel="stylesheet" href="/styles.css?v=mobile-20260504">
+    <link rel="stylesheet" href="/styles.css?v=ux-20260504">
     <style>
       body { overflow: auto; }
       .doc { max-width: 980px; margin: 0 auto; padding: 34px 18px 70px; line-height: 1.58; }
@@ -20,15 +20,16 @@
   <body>
     <article class="doc">
       <h1>VixArena</h1>
-      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, accepts WebSocket input, broadcasts snapshots at 20 ticks/sec, and serves a plain browser canvas frontend.</p>
+      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, accepts WebSocket input, broadcasts snapshots at 20 ticks/sec, and serves a plain browser canvas frontend with an objective HUD, minimap, edge target markers, score popups, and touch controls.</p>
 
       <h2>Controls</h2>
       <ul>
         <li><code>WASD</code> or arrow keys move the player.</li>
-        <li>The touch joystick moves the player on mobile and touchscreen devices.</li>
+        <li>The touch joystick moves the player on mobile and touchscreen devices. Dragging directly on the arena also starts a floating joystick.</li>
         <li>Collect glowing orbs for instant points.</li>
         <li>Grab violet speed boosts for temporary faster movement.</li>
         <li>Hold the green control zone for passive points.</li>
+        <li>Follow the objective HUD and edge markers to find nearby orbs, boosts, or the control zone.</li>
         <li><code>Enter</code> focuses chat.</li>
         <li><code>Esc</code> unfocuses chat.</li>
       </ul>
@@ -73,7 +74,7 @@
         <li>No persistence across restarts.</li>
         <li>No accounts, private rooms, or anti-abuse identity layer.</li>
         <li>Snapshots are full lightweight world snapshots rather than binary deltas.</li>
-        <li>Mobile support is intentionally lightweight for v1; advanced gestures, room setup, and landscape-specific UI modes are still TODOs.</li>
+        <li>Mobile support is still v1-level; landscape-specific UI modes, haptics, and richer gesture controls are TODOs.</li>
       </ul>
     </article>
   </body>

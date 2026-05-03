@@ -216,6 +216,43 @@ button {
   color: var(--good);
 }
 
+.objective-hud {
+  position: absolute;
+  left: 50%;
+  top: 72px;
+  transform: translateX(-50%);
+  min-width: 240px;
+  max-width: min(420px, calc(100% - 36px));
+  padding: 10px 14px;
+  border: 1px solid rgba(102, 204, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.70);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  text-align: center;
+  z-index: 12;
+}
+
+.objective-hud span,
+.objective-hud em {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.objective-hud strong {
+  display: block;
+  margin: 2px 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .leaderboard-panel {
   position: absolute;
   left: 18px;
@@ -406,6 +443,27 @@ button {
     z-index: 15;
   }
 
+  .objective-hud {
+    left: 10px;
+    right: 74px;
+    top: 10px;
+    min-width: 0;
+    max-width: none;
+    padding: 8px 10px;
+    transform: none;
+    text-align: left;
+    z-index: 13;
+  }
+
+  .objective-hud span,
+  .objective-hud em {
+    font-size: 10px;
+  }
+
+  .objective-hud strong {
+    font-size: 13px;
+  }
+
   .join-panel {
     left: 10px;
     top: 10px;
@@ -428,6 +486,7 @@ button {
   }
 
   .mobile-action {
+    position: relative;
     width: 52px;
     height: 52px;
     padding: 0;
@@ -438,6 +497,26 @@ button {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.36);
     font-size: 20px;
     line-height: 1;
+  }
+
+  .mobile-badge {
+    position: absolute;
+    right: -4px;
+    top: -4px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border: 2px solid var(--bg);
+    border-radius: 999px;
+    color: #081018;
+    background: var(--danger);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 16px;
+  }
+
+  .mobile-badge.hidden {
+    display: none;
   }
 
   .touch-stick {
@@ -453,6 +532,10 @@ button {
     box-shadow: 0 14px 42px rgba(0, 0, 0, 0.36);
     z-index: 17;
     touch-action: none;
+  }
+
+  .touch-stick.floating {
+    bottom: auto;
   }
 
   .touch-knob {

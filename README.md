@@ -10,11 +10,11 @@ Vix.cpp v2.5.2 was installed and evaluated on this VPS. Its HTTP listener did no
 - Collectible orb pickups with server-authoritative scoring.
 - Temporary speed powerups with server-authoritative boost timers.
 - Central control zone that grants passive points while occupied.
-- Live leaderboard, arena event feed, minimap, and local score HUD.
+- Live leaderboard, arena event feed, minimap, objective HUD, edge target markers, score popups, and local score HUD.
 - WebSocket join, input, chat, ping/pong, and snapshot messages.
 - 20 ticks/sec server loop with low-cost full snapshots for v1.
 - In-memory chat history for the last 50 messages.
-- Responsive canvas frontend with interpolation, HUD, chat, touch joystick, and connection metrics.
+- Responsive canvas frontend with interpolation, HUD, chat, mobile chat badge, floating touch joystick, and connection metrics.
 - HTTP endpoints for health, sanitized state, stats, docs, and the game page.
 
 ## Stack
@@ -137,10 +137,11 @@ Server messages:
 ## Controls
 
 - `WASD` or arrow keys: move.
-- Touch joystick: move on mobile/touchscreen devices.
+- Touch joystick: move on mobile/touchscreen devices. On touchscreens, dragging directly on the arena also starts a floating joystick.
 - Collect glowing orbs for instant points.
 - Grab violet boosts for temporary speed.
 - Hold the central control zone for passive points.
+- Follow the objective HUD and edge markers to find nearby orbs, boosts, or the control zone.
 - `Enter`: focus chat.
 - `Esc`: unfocus chat.
 
