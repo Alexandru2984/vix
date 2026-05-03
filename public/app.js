@@ -47,6 +47,9 @@
     floaters: [],
     activeObjective: null,
     camera: { x: 1000, y: 600 },
+    layoutHeight: 0,
+    canvasPixelWidth: 0,
+    canvasPixelHeight: 0,
     pingTimer: 0,
     reconnectTimer: 0,
     startedAt: performance.now()
@@ -55,9 +58,45 @@
   function resize() {
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    canvas.width = Math.floor(rect.width * dpr);
-    canvas.height = Math.floor(rect.height * dpr);
+    const width = Math.max(1, Math.floor(rect.width * dpr));
+    const height = Math.max(1, Math.floor(rect.height * dpr));
+    if (width !== state.canvasPixelWidth || height !== state.canvasPixelHeight) {
+      canvas.width = width;
+      canvas.height = height;
+      state.canvasPixelWidth = width;
+      state.canvasPixelHeight = height;
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function setAppHeight(force = false) {
+    const visualHeight = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
+    const fallbackHeight = Math.round(window.innerHeight || visualHeight);
+    const nextHeight = Math.max(320, fallbackHeight);
+    const inputFocused = document.activeElement === chatInput || document.activeElement === nameInput;
+    const previousHeight = state.layoutHeight || nextHeight;
+    const keyboardOpen = inputFocused && (visualHeight < previousHeight * 0.82 || nextHeight < previousHeight * 0.82);
+
+    if (force || !state.layoutHeight || !keyboardOpen || nextHeight > state.layoutHeight) {
+      state.layoutHeight = nextHeight;
+      document.documentElement.style.setProperty("--app-height", `${state.layoutHeight}px`);
+    }
+
+    document.body.classList.toggle("chat-focused", document.activeElement === chatInput);
+    document.body.classList.toggle("keyboard-open", keyboardOpen);
+    window.scrollTo(0, 0);
+  }
+
+  function settleViewport() {
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => {
+      setAppHeight();
+      window.scrollTo(0, 0);
+    });
+    setTimeout(() => {
+      setAppHeight();
+      window.scrollTo(0, 0);
+    }, 220);
   }
 
   function setStatus(text, online) {
@@ -495,13 +534,34 @@
     if (event.key === "Escape") {
       chatInput.blur();
     } else if (event.key === "Enter") {
+      event.preventDefault();
       const message = chatInput.value.trim();
       if (message) {
         send({ type: "chat", message });
         chatInput.value = "";
       }
+      if (isMobileLayout()) {
+        document.body.classList.remove("show-chat");
+      }
+      chatInput.blur();
+      settleViewport();
     }
   });
+
+  chatInput.addEventListener("focus", () => {
+    clearChatUnread();
+    setAppHeight();
+  });
+
+  chatInput.addEventListener("blur", () => {
+    if (isMobileLayout()) {
+      document.body.classList.remove("show-chat");
+    }
+    settleViewport();
+  });
+
+  nameInput.addEventListener("focus", setAppHeight);
+  nameInput.addEventListener("blur", settleViewport);
 
   joinBtn.addEventListener("click", () => {
     state.joined = true;
@@ -544,6 +604,7 @@
     } else {
       chatInput.blur();
     }
+    settleViewport();
   });
 
   mobileInfoBtn.addEventListener("click", () => {
@@ -582,10 +643,14 @@
   }
 
   function drawMinimap(viewW, viewH) {
-    const mapW = Math.min(220, viewW * 0.22);
+    if (isMobileLayout() && document.body.classList.contains("chat-focused")) return;
+
+    const mobile = isMobileLayout();
+    const mapW = mobile ? Math.min(132, viewW * 0.30) : Math.min(220, viewW * 0.22);
     const mapH = mapW * (state.world.height / state.world.width);
     const x = viewW - mapW - 18;
-    const y = 18;
+    const y = mobile ? 64 : 18;
+    if (y + mapH + 18 > viewH) return;
     const sx = mapW / state.world.width;
     const sy = mapH / state.world.height;
 
@@ -631,6 +696,8 @@
   }
 
   function drawObjectiveMarker(viewW, viewH, left, top) {
+    if (isMobileLayout() && document.body.classList.contains("chat-focused")) return;
+
     const objective = state.activeObjective;
     if (!objective || !objective.realDist) return;
 
@@ -821,7 +888,13 @@
   setInterval(() => sendInput(true), 100);
   setInterval(() => send({ type: "ping", t: Date.now() }), 2000);
 
-  window.addEventListener("resize", resize);
+  window.addEventListener("resize", () => {
+    setAppHeight();
+    resize();
+  });
+  window.visualViewport?.addEventListener("resize", setAppHeight);
+  window.visualViewport?.addEventListener("scroll", settleViewport);
+  setAppHeight(true);
   resize();
   connect();
   requestAnimationFrame(render);
