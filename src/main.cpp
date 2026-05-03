@@ -273,7 +273,9 @@ namespace
     void handleRequest()
     {
       http::response<http::string_body> res;
-      const std::string target(req_.target());
+      std::string target(req_.target());
+      if (const auto queryPos = target.find('?'); queryPos != std::string::npos)
+        target.resize(queryPos);
 
       if (req_.method() != http::verb::get && req_.method() != http::verb::head)
       {

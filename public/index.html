@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VixArena</title>
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=mobile-20260504">
   </head>
   <body>
     <main class="shell">
@@ -36,6 +36,7 @@
           </div>
           <div class="instructions">
             <span>WASD / arrow keys to move</span>
+            <span>Touch joystick on mobile</span>
             <span>Collect orbs for points</span>
             <span>Grab violet boosts for speed</span>
             <span>Hold the green zone for passive score</span>
@@ -58,8 +59,17 @@
           <div id="chatLog" class="chat-log"></div>
           <input id="chatInput" maxlength="220" placeholder="Message">
         </section>
+
+        <nav class="mobile-actions" aria-label="Touch controls">
+          <button id="mobileInfoBtn" class="mobile-action" type="button" aria-label="Toggle arena panels">i</button>
+          <button id="mobileChatBtn" class="mobile-action" type="button" aria-label="Open chat">✦</button>
+        </nav>
+
+        <div id="touchStick" class="touch-stick" aria-label="Movement joystick">
+          <div id="touchKnob" class="touch-knob"></div>
+        </div>
       </section>
     </main>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=mobile-20260504"></script>
   </body>
 </html>

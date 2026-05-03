@@ -15,6 +15,10 @@
   const leaderboardEl = document.getElementById("leaderboard");
   const roundBanner = document.getElementById("roundBanner");
   const eventFeed = document.getElementById("eventFeed");
+  const touchStick = document.getElementById("touchStick");
+  const touchKnob = document.getElementById("touchKnob");
+  const mobileChatBtn = document.getElementById("mobileChatBtn");
+  const mobileInfoBtn = document.getElementById("mobileInfoBtn");
 
   const state = {
     ws: null,
@@ -32,6 +36,7 @@
     keys: { up: false, down: false, left: false, right: false },
     seq: 0,
     lastInputSent: "",
+    touchPointerId: null,
     camera: { x: 1000, y: 600 },
     pingTimer: 0,
     reconnectTimer: 0,
@@ -256,6 +261,40 @@
     send({ type: "input", ...state.keys, seq: ++state.seq });
   }
 
+  function setTouchInput(dx, dy) {
+    const dead = 0.22;
+    state.keys.left = dx < -dead;
+    state.keys.right = dx > dead;
+    state.keys.up = dy < -dead;
+    state.keys.down = dy > dead;
+    sendInput();
+  }
+
+  function resetTouchInput() {
+    state.touchPointerId = null;
+    touchKnob.style.transform = "translate(-50%, -50%)";
+    state.keys.left = false;
+    state.keys.right = false;
+    state.keys.up = false;
+    state.keys.down = false;
+    sendInput(true);
+  }
+
+  function updateTouchStick(event) {
+    const rect = touchStick.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const max = rect.width * 0.34;
+    const rawX = event.clientX - centerX;
+    const rawY = event.clientY - centerY;
+    const dist = Math.hypot(rawX, rawY);
+    const scale = dist > max ? max / dist : 1;
+    const x = rawX * scale;
+    const y = rawY * scale;
+    touchKnob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    setTouchInput(x / max, y / max);
+  }
+
   function keyMap(key, value) {
     const k = key.toLowerCase();
     if (k === "w" || key === "ArrowUp") state.keys.up = value;
@@ -307,6 +346,40 @@
 
   nameInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") joinBtn.click();
+  });
+
+  touchStick.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    state.touchPointerId = event.pointerId;
+    touchStick.setPointerCapture(event.pointerId);
+    updateTouchStick(event);
+  });
+
+  touchStick.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== state.touchPointerId) return;
+    event.preventDefault();
+    updateTouchStick(event);
+  });
+
+  touchStick.addEventListener("pointerup", (event) => {
+    if (event.pointerId !== state.touchPointerId) return;
+    event.preventDefault();
+    resetTouchInput();
+  });
+
+  touchStick.addEventListener("pointercancel", resetTouchInput);
+
+  mobileChatBtn.addEventListener("click", () => {
+    document.body.classList.toggle("show-chat");
+    if (document.body.classList.contains("show-chat")) {
+      chatInput.focus();
+    } else {
+      chatInput.blur();
+    }
+  });
+
+  mobileInfoBtn.addEventListener("click", () => {
+    document.body.classList.toggle("show-panels");
   });
 
   function updateRenderPlayers() {

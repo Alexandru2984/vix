@@ -14,7 +14,7 @@ Vix.cpp v2.5.2 was installed and evaluated on this VPS. Its HTTP listener did no
 - WebSocket join, input, chat, ping/pong, and snapshot messages.
 - 20 ticks/sec server loop with low-cost full snapshots for v1.
 - In-memory chat history for the last 50 messages.
-- Canvas frontend with interpolation, HUD, chat, and connection metrics.
+- Responsive canvas frontend with interpolation, HUD, chat, touch joystick, and connection metrics.
 - HTTP endpoints for health, sanitized state, stats, docs, and the game page.
 
 ## Stack
@@ -137,6 +137,7 @@ Server messages:
 ## Controls
 
 - `WASD` or arrow keys: move.
+- Touch joystick: move on mobile/touchscreen devices.
 - Collect glowing orbs for instant points.
 - Grab violet boosts for temporary speed.
 - Hold the central control zone for passive points.
@@ -187,7 +188,7 @@ ss -ltnp | grep vix-arena
 - No persistence across restarts.
 - No authentication or private rooms.
 - No binary protocol or delta compression yet.
-- Mobile touch controls are not implemented.
+- Mobile support is intentionally lightweight for v1; advanced gestures, room setup, and landscape-specific UI modes are still TODOs.
 - Horizontal scaling would require external state or pub/sub.
 
 ## Git
