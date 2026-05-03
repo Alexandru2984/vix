@@ -1,6 +1,8 @@
 #include "GameServer.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 
 #include "Protocol.hpp"
@@ -19,9 +21,12 @@ namespace arena
 
   GameServer::GameServer()
       : rng_(std::random_device{}()),
-        startedAt_(std::chrono::steady_clock::now())
+        startedAt_(std::chrono::steady_clock::now()),
+        roundStartedAt_(startedAt_),
+        intermissionUntil_(startedAt_)
   {
     ensureOrbsLocked();
+    ensurePowerupsLocked();
   }
 
   GameServer::~GameServer()
@@ -175,6 +180,7 @@ namespace arena
         player.session = session->shared_from_this();
         player.lastSeen = std::chrono::steady_clock::now();
         player.lastChat = player.lastSeen - std::chrono::seconds(10);
+        player.speedBoostUntil = player.lastSeen;
 
         const std::string id = player.id;
         const std::string playerName = player.name;
@@ -350,6 +356,9 @@ namespace arena
   void GameServer::step(double dt)
   {
     ensureOrbsLocked();
+    ensurePowerupsLocked();
+    updateRoundLocked();
+    const auto now = std::chrono::steady_clock::now();
 
     for (auto &[_, player] : players_)
     {
@@ -372,8 +381,9 @@ namespace arena
         dy /= len;
       }
 
-      const double nextX = player.x + dx * playerSpeed_ * dt;
-      const double nextY = player.y + dy * playerSpeed_ * dt;
+      const double speed = playerSpeed_ * (now < player.speedBoostUntil ? speedBoostMultiplier_ : 1.0);
+      const double nextX = player.x + dx * speed * dt;
+      const double nextY = player.y + dy * speed * dt;
 
       double candidateX = nextX;
       double candidateY = player.y;
@@ -392,7 +402,13 @@ namespace arena
       }
     }
 
+    if (intermission_)
+    {
+      return;
+    }
+
     handleOrbPickupsLocked();
+    handlePowerupPickupsLocked();
     handleControlZoneLocked(dt);
   }
 
@@ -401,6 +417,75 @@ namespace arena
     while (orbs_.size() < targetOrbCount_)
     {
       orbs_.push_back(spawnOrbLocked());
+    }
+  }
+
+  void GameServer::ensurePowerupsLocked()
+  {
+    while (powerups_.size() < targetPowerupCount_)
+    {
+      powerups_.push_back(spawnPowerupLocked());
+    }
+  }
+
+  void GameServer::updateRoundLocked()
+  {
+    const auto now = std::chrono::steady_clock::now();
+    if (intermission_)
+    {
+      if (now >= intermissionUntil_)
+      {
+        startNextRoundLocked(now);
+      }
+      return;
+    }
+
+    if (now - roundStartedAt_ >= std::chrono::seconds(roundDurationSeconds_))
+    {
+      finishRoundLocked(now);
+    }
+  }
+
+  void GameServer::finishRoundLocked(std::chrono::steady_clock::time_point now)
+  {
+    lastWinnerId_.clear();
+    lastWinnerName_ = "No winner";
+    lastWinnerScore_ = 0;
+
+    for (const auto &[_, player] : players_)
+    {
+      if (lastWinnerId_.empty() || player.score > lastWinnerScore_)
+      {
+        lastWinnerId_ = player.id;
+        lastWinnerName_ = player.name;
+        lastWinnerScore_ = player.score;
+      }
+    }
+
+    intermission_ = true;
+    intermissionUntil_ = now + std::chrono::seconds(intermissionSeconds_);
+    ++totalRoundsCompleted_;
+  }
+
+  void GameServer::startNextRoundLocked(std::chrono::steady_clock::time_point now)
+  {
+    intermission_ = false;
+    roundStartedAt_ = now;
+    ++roundNumber_;
+    orbs_.clear();
+    ensureOrbsLocked();
+    powerups_.clear();
+    ensurePowerupsLocked();
+
+    for (auto &[_, player] : players_)
+    {
+      player.score = 0;
+      player.controlCarry = 0.0;
+      auto [x, y] = world_.randomSpawn(rng_);
+      player.x = x;
+      player.y = y;
+      player.input = {};
+      player.speedBoostUntil = now;
     }
   }
 
@@ -420,6 +505,29 @@ namespace arena
           player.score += orb.value;
           ++totalOrbPickups_;
           orb = spawnOrbLocked();
+        }
+      }
+    }
+  }
+
+  void GameServer::handlePowerupPickupsLocked()
+  {
+    const double pickupRadius = World::playerRadius + powerupRadius_;
+    const double pickupRadiusSq = pickupRadius * pickupRadius;
+    const auto now = std::chrono::steady_clock::now();
+
+    for (auto &[_, player] : players_)
+    {
+      for (auto &powerup : powerups_)
+      {
+        const double dx = player.x - powerup.x;
+        const double dy = player.y - powerup.y;
+        if (dx * dx + dy * dy <= pickupRadiusSq)
+        {
+          player.speedBoostUntil = now + std::chrono::milliseconds(
+                                             static_cast<int>(powerup.durationSeconds * 1000.0));
+          ++totalPowerupsSinceStart_;
+          powerup = spawnPowerupLocked();
         }
       }
     }
@@ -488,7 +596,9 @@ namespace arena
         {"type", "snapshot"},
         {"players", players},
         {"orbs", orbsJsonLocked()},
+        {"powerups", powerupsJsonLocked()},
         {"controlZone", controlZoneJson()},
+        {"round", roundJsonLocked()},
         {"serverTime", isoTimestampUtc()}};
   }
 
@@ -507,6 +617,22 @@ namespace arena
     return orbs;
   }
 
+  nlohmann::json GameServer::powerupsJsonLocked() const
+  {
+    nlohmann::json powerups = nlohmann::json::array();
+    for (const auto &powerup : powerups_)
+    {
+      powerups.push_back({
+          {"id", powerup.id},
+          {"kind", powerup.kind},
+          {"x", powerup.x},
+          {"y", powerup.y},
+          {"durationSeconds", powerup.durationSeconds},
+          {"color", powerup.color}});
+    }
+    return powerups;
+  }
+
   nlohmann::json GameServer::controlZoneJson() const
   {
     return {
@@ -514,6 +640,37 @@ namespace arena
         {"y", controlZoneY_},
         {"radius", controlZoneRadius_},
         {"pointsPerSecond", controlPointsPerSecond_}};
+  }
+
+  nlohmann::json GameServer::roundJsonLocked() const
+  {
+    const auto now = std::chrono::steady_clock::now();
+    int secondsRemaining = 0;
+    std::string phase = "active";
+
+    if (intermission_)
+    {
+      phase = "intermission";
+      secondsRemaining = static_cast<int>(
+          std::max<std::int64_t>(0, std::chrono::duration_cast<std::chrono::seconds>(intermissionUntil_ - now).count()));
+    }
+    else
+    {
+      const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - roundStartedAt_).count();
+      secondsRemaining = static_cast<int>(std::max<std::int64_t>(0, roundDurationSeconds_ - elapsed));
+    }
+
+    return {
+        {"number", roundNumber_},
+        {"phase", phase},
+        {"secondsRemaining", secondsRemaining},
+        {"durationSeconds", roundDurationSeconds_},
+        {"intermissionSeconds", intermissionSeconds_},
+        {"lastWinner", {
+                           {"id", lastWinnerId_},
+                           {"name", lastWinnerName_},
+                           {"score", lastWinnerScore_},
+                       }}};
   }
 
   std::vector<GameServer::SessionPtr> GameServer::liveSessionsLocked() const
@@ -615,6 +772,31 @@ namespace arena
     return orb;
   }
 
+  GameServer::Powerup GameServer::spawnPowerupLocked()
+  {
+    std::uniform_real_distribution<double> xdist(60.0, world_.width() - 60.0);
+    std::uniform_real_distribution<double> ydist(60.0, world_.height() - 60.0);
+
+    Powerup powerup;
+    powerup.id = "u-" + std::to_string(nextPowerupNumber_++);
+
+    for (int attempt = 0; attempt < 120; ++attempt)
+    {
+      const double x = xdist(rng_);
+      const double y = ydist(rng_);
+      if (!world_.collides(x, y, powerupRadius_ + 8.0))
+      {
+        powerup.x = x;
+        powerup.y = y;
+        return powerup;
+      }
+    }
+
+    powerup.x = world_.width() * 0.5 + 260.0;
+    powerup.y = world_.height() * 0.5;
+    return powerup;
+  }
+
   nlohmann::json GameServer::healthJson() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -633,7 +815,9 @@ namespace arena
         {"players", players_.size()},
         {"world", worldSummary(world_)},
         {"orbs", orbsJsonLocked()},
-        {"controlZone", controlZoneJson()}};
+        {"powerups", powerupsJsonLocked()},
+        {"controlZone", controlZoneJson()},
+        {"round", roundJsonLocked()}};
   }
 
   nlohmann::json GameServer::statsJson() const
@@ -647,6 +831,9 @@ namespace arena
         {"totalConnectionsSinceStart", totalConnections_},
         {"totalChatMessagesSinceStart", totalChatMessages_},
         {"totalOrbPickupsSinceStart", totalOrbPickups_},
-        {"totalControlZonePointsSinceStart", totalControlZonePoints_}};
+        {"totalControlZonePointsSinceStart", totalControlZonePoints_},
+        {"totalPowerupsSinceStart", totalPowerupsSinceStart_},
+        {"roundNumber", roundNumber_},
+        {"totalRoundsCompletedSinceStart", totalRoundsCompleted_}};
   }
 }

@@ -4,6 +4,8 @@
   const statusEl = document.getElementById("status");
   const playersEl = document.getElementById("players");
   const scoreEl = document.getElementById("score");
+  const roundTimeEl = document.getElementById("roundTime");
+  const boostEl = document.getElementById("boost");
   const pingEl = document.getElementById("ping");
   const joinPanel = document.getElementById("joinPanel");
   const nameInput = document.getElementById("nameInput");
@@ -11,6 +13,7 @@
   const chatLog = document.getElementById("chatLog");
   const chatInput = document.getElementById("chatInput");
   const leaderboardEl = document.getElementById("leaderboard");
+  const roundBanner = document.getElementById("roundBanner");
 
   const state = {
     ws: null,
@@ -18,7 +21,9 @@
     localId: null,
     world: { width: 2000, height: 1200, obstacles: [] },
     orbs: [],
+    powerups: [],
     controlZone: { x: 1000, y: 600, radius: 150, pointsPerSecond: 2 },
+    round: { number: 1, phase: "active", secondsRemaining: 180, lastWinner: { name: "No winner yet", score: 0 } },
     players: new Map(),
     renderPlayers: new Map(),
     keys: { up: false, down: false, left: false, right: false },
@@ -99,7 +104,10 @@
     } else if (msg.type === "snapshot") {
       applySnapshot(msg.players || []);
       state.orbs = Array.isArray(msg.orbs) ? msg.orbs : state.orbs;
+      state.powerups = Array.isArray(msg.powerups) ? msg.powerups : state.powerups;
       state.controlZone = msg.controlZone || state.controlZone;
+      state.round = msg.round || state.round;
+      updateRoundHud();
     } else if (msg.type === "chat") {
       appendChat(msg.from || "server", msg.message || "");
     } else if (msg.type === "chat_history") {
@@ -141,6 +149,7 @@
     playersEl.textContent = String(state.players.size);
     const local = state.players.get(state.localId);
     scoreEl.textContent = String(local?.score || 0);
+    boostEl.textContent = local?.boostMs > 0 ? `${Math.ceil(local.boostMs / 1000)}s` : "--";
     renderLeaderboard();
   }
 
@@ -159,6 +168,35 @@
       li.append(name, score);
       leaderboardEl.append(li);
     }
+  }
+
+  function formatTime(totalSeconds) {
+    const safe = Math.max(0, Number(totalSeconds) || 0);
+    const minutes = Math.floor(safe / 60);
+    const seconds = Math.floor(safe % 60);
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function updateRoundHud() {
+    roundTimeEl.textContent = formatTime(state.round.secondsRemaining);
+    if (state.round.phase === "intermission") {
+      const winner = state.round.lastWinner || {};
+      roundBanner.innerHTML = `Round ${state.round.number} complete: <b>${escapeHtml(winner.name || "No winner")}</b> won with <b>${winner.score || 0}</b>. Next round in ${formatTime(state.round.secondsRemaining)}.`;
+      roundBanner.classList.remove("hidden");
+    } else {
+      roundBanner.classList.add("hidden");
+      roundBanner.textContent = "";
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;"
+    })[c]);
   }
 
   function appendChat(from, message) {
@@ -249,6 +287,7 @@
       rp.name = target.name;
       rp.color = target.color;
       rp.score = target.score || 0;
+      rp.boostMs = target.boostMs || 0;
       state.renderPlayers.set(id, rp);
     }
   }
@@ -343,6 +382,29 @@
       }
     }
 
+    for (const powerup of state.powerups) {
+      const t = (performance.now() - state.startedAt) / 380;
+      const size = 15 + Math.sin(t) * 2;
+      ctx.save();
+      ctx.translate(powerup.x, powerup.y);
+      ctx.rotate(t * 0.8);
+      ctx.beginPath();
+      ctx.shadowColor = powerup.color || "#c9a7ff";
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = powerup.color || "#c9a7ff";
+      ctx.moveTo(0, -size);
+      ctx.lineTo(size, 0);
+      ctx.lineTo(0, size);
+      ctx.lineTo(-size, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,255,255,0.70)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
     for (const p of state.renderPlayers.values()) {
       ctx.beginPath();
       ctx.fillStyle = p.color || "#66ccff";
@@ -354,6 +416,13 @@
       ctx.lineWidth = p.id === state.localId ? 3 : 2;
       ctx.strokeStyle = p.id === state.localId ? "#ffffff" : "rgba(255,255,255,0.58)";
       ctx.stroke();
+      if (p.boostMs > 0) {
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(201,167,255,0.78)";
+        ctx.lineWidth = 3;
+        ctx.arc(p.x, p.y, 25, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       ctx.font = "13px system-ui, sans-serif";
       ctx.textAlign = "center";

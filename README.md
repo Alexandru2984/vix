@@ -8,6 +8,7 @@ Vix.cpp v2.5.2 was installed and evaluated on this VPS. Its HTTP listener did no
 
 - Shared 2D world with server-authoritative movement, bounds, and static obstacles.
 - Collectible orb pickups with server-authoritative scoring.
+- Temporary speed powerups with server-authoritative boost timers.
 - Central control zone that grants passive points while occupied.
 - Live leaderboard and local score HUD.
 - WebSocket join, input, chat, ping/pong, and snapshot messages.
@@ -118,7 +119,7 @@ Server messages:
 
 ```json
 {"type":"welcome","id":"p-1","world":{"width":2000,"height":1200,"obstacles":[]}}
-{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2}}
+{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180}}
 {"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}
 {"type":"player_joined","id":"p-1","name":"Micu"}
 {"type":"player_left","id":"p-1"}
@@ -128,8 +129,8 @@ Server messages:
 ## API Endpoints
 
 - `GET /health` returns status, service name, player count, and uptime.
-- `GET /api/state` returns player count, world size, obstacles, current orbs, and control zone metadata.
-- `GET /api/stats` returns connected players, uptime, tick target, total connections, total chat messages, orb pickups, and control-zone points.
+- `GET /api/state` returns player count, world size, obstacles, current orbs, speed powerups, round state, and control zone metadata.
+- `GET /api/stats` returns connected players, uptime, tick target, total connections, total chat messages, orb pickups, powerup pickups, rounds, and control-zone points.
 - `GET /docs` explains controls, protocol, endpoints, and limitations.
 - `GET /` serves the browser game.
 
@@ -137,6 +138,7 @@ Server messages:
 
 - `WASD` or arrow keys: move.
 - Collect glowing orbs for instant points.
+- Grab violet boosts for temporary speed.
 - Hold the central control zone for passive points.
 - `Enter`: focus chat.
 - `Esc`: unfocus chat.
@@ -177,7 +179,7 @@ ss -ltnp | grep vix-arena
 
 - State is in memory and intentionally small.
 - The target tick rate is 20 ticks/sec.
-- Snapshots are compact JSON and include players, scores, active orbs, and control-zone metadata.
+- Snapshots are compact JSON and include players, scores, boost timers, active orbs, powerups, round state, and control-zone metadata.
 - The design should handle 20-50 connected players for v1 on a small VPS.
 
 ## Limitations / TODOs

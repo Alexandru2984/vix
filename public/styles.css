@@ -185,6 +185,29 @@ button {
   gap: 8px;
 }
 
+.round-banner {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  min-width: min(380px, calc(100% - 36px));
+  padding: 12px 16px;
+  border: 1px solid rgba(122, 245, 155, 0.38);
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.86);
+  color: var(--text);
+  text-align: center;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.28);
+}
+
+.round-banner.hidden {
+  display: none;
+}
+
+.round-banner b {
+  color: var(--good);
+}
+
 .leaderboard-panel {
   position: absolute;
   left: 18px;
@@ -282,5 +305,9 @@ button {
     left: 12px;
     bottom: 196px;
     width: min(260px, calc(100% - 24px));
+  }
+
+  .round-banner {
+    top: 12px;
   }
 }

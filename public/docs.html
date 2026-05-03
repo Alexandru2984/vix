@@ -26,6 +26,7 @@
       <ul>
         <li><code>WASD</code> or arrow keys move the player.</li>
         <li>Collect glowing orbs for instant points.</li>
+        <li>Grab violet speed boosts for temporary faster movement.</li>
         <li>Hold the green control zone for passive points.</li>
         <li><code>Enter</code> focuses chat.</li>
         <li><code>Esc</code> unfocuses chat.</li>
@@ -35,8 +36,8 @@
       <ul>
         <li><code>GET /</code> game page.</li>
         <li><code>GET /health</code> health JSON with service status, player count, and uptime.</li>
-        <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, and control zone.</li>
-        <li><code>GET /api/stats</code> runtime counters, tick target, pickups, and control-zone points.</li>
+        <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, powerups, round state, and control zone.</li>
+        <li><code>GET /api/stats</code> runtime counters, tick target, pickups, rounds, and control-zone points.</li>
         <li><code>GET /docs</code> this page.</li>
       </ul>
 
@@ -51,7 +52,7 @@
 
       <h2>Server messages</h2>
       <pre><code>{"type":"welcome","id":"p-1","world":{"width":2000,"height":1200,"obstacles":[]}}</code></pre>
-      <pre><code>{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2}}</code></pre>
+      <pre><code>{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180}}</code></pre>
       <pre><code>{"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}</code></pre>
       <pre><code>{"type":"player_joined","id":"p-1","name":"Micu"}</code></pre>
       <pre><code>{"type":"player_left","id":"p-1"}</code></pre>
@@ -62,7 +63,7 @@
         <li>Invalid JSON and unknown message types are rejected.</li>
         <li>Display names are capped at 18 bytes and chat at 220 bytes.</li>
         <li>WebSocket payloads are capped at 4096 bytes.</li>
-        <li>Movement, orb pickup scoring, and control-zone scoring are server-authoritative.</li>
+        <li>Movement, speed boosts, orb pickup scoring, round state, and control-zone scoring are server-authoritative.</li>
         <li>Chat is throttled per connection and the last 50 messages are kept in memory.</li>
       </ul>
 

@@ -37,5 +37,6 @@ namespace arena
     std::weak_ptr<ClientConnection> session;
     std::chrono::steady_clock::time_point lastSeen;
     std::chrono::steady_clock::time_point lastChat;
+    std::chrono::steady_clock::time_point speedBoostUntil;
   };
 }

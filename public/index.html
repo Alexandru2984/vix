@@ -17,12 +17,15 @@
           <span id="status" class="pill">offline</span>
           <span><strong id="players">0</strong> players</span>
           <span><strong id="score">0</strong> score</span>
+          <span><strong id="roundTime">3:00</strong> round</span>
+          <span><strong id="boost">--</strong> boost</span>
           <span><strong id="ping">--</strong> ms</span>
         </div>
       </section>
 
       <section class="arena-wrap">
         <canvas id="arena" width="1280" height="720"></canvas>
+        <div id="roundBanner" class="round-banner hidden"></div>
 
         <aside id="joinPanel" class="join-panel">
           <h2>Join arena</h2>
@@ -34,6 +37,7 @@
           <div class="instructions">
             <span>WASD / arrow keys to move</span>
             <span>Collect orbs for points</span>
+            <span>Grab violet boosts for speed</span>
             <span>Hold the green zone for passive score</span>
             <span>Enter to chat</span>
             <span>Esc to unfocus chat</span>

@@ -49,6 +49,16 @@ namespace arena
       std::string color{"#66ccff"};
     };
 
+    struct Powerup
+    {
+      std::string id;
+      std::string kind{"speed"};
+      double x{0.0};
+      double y{0.0};
+      double durationSeconds{6.0};
+      std::string color{"#c9a7ff"};
+    };
+
     using SessionPtr = std::shared_ptr<ClientConnection>;
 
     void handleJoin(ClientConnection *session, const nlohmann::json &message);
@@ -59,12 +69,19 @@ namespace arena
     void tickLoop();
     void step(double dt);
     void ensureOrbsLocked();
+    void ensurePowerupsLocked();
+    void updateRoundLocked();
+    void finishRoundLocked(std::chrono::steady_clock::time_point now);
+    void startNextRoundLocked(std::chrono::steady_clock::time_point now);
     void handleOrbPickupsLocked();
+    void handlePowerupPickupsLocked();
     void handleControlZoneLocked(double dt);
     void cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents);
     [[nodiscard]] nlohmann::json snapshotLocked() const;
     [[nodiscard]] nlohmann::json orbsJsonLocked() const;
+    [[nodiscard]] nlohmann::json powerupsJsonLocked() const;
     [[nodiscard]] nlohmann::json controlZoneJson() const;
+    [[nodiscard]] nlohmann::json roundJsonLocked() const;
     [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked() const;
 
     void send(ClientConnection *session, const nlohmann::json &message);
@@ -73,6 +90,7 @@ namespace arena
 
     [[nodiscard]] std::string randomColor();
     [[nodiscard]] Orb spawnOrbLocked();
+    [[nodiscard]] Powerup spawnPowerupLocked();
 
     mutable std::mutex mutex_;
     World world_;
@@ -80,6 +98,7 @@ namespace arena
     std::unordered_map<ClientConnection *, std::string> sessionToPlayer_;
     std::deque<nlohmann::json> chatHistory_;
     std::vector<Orb> orbs_;
+    std::vector<Powerup> powerups_;
     std::mt19937 rng_;
 
     std::atomic<bool> running_{false};
@@ -90,15 +109,30 @@ namespace arena
     std::uint64_t totalChatMessages_{0};
     std::uint64_t totalOrbPickups_{0};
     std::uint64_t totalControlZonePoints_{0};
+    std::uint64_t totalPowerupsSinceStart_{0};
     std::uint64_t nextOrbNumber_{1};
+    std::uint64_t nextPowerupNumber_{1};
+    std::uint64_t roundNumber_{1};
+    std::uint64_t totalRoundsCompleted_{0};
+    std::chrono::steady_clock::time_point roundStartedAt_;
+    std::chrono::steady_clock::time_point intermissionUntil_;
+    bool intermission_{false};
+    std::string lastWinnerId_;
+    std::string lastWinnerName_{"No winner yet"};
+    int lastWinnerScore_{0};
 
     static constexpr int tickRateTarget_{20};
     static constexpr double playerSpeed_{235.0};
     static constexpr std::size_t targetOrbCount_{18};
+    static constexpr std::size_t targetPowerupCount_{5};
     static constexpr double orbRadius_{12.0};
+    static constexpr double powerupRadius_{14.0};
+    static constexpr double speedBoostMultiplier_{1.55};
     static constexpr double controlZoneX_{1000.0};
     static constexpr double controlZoneY_{600.0};
     static constexpr double controlZoneRadius_{150.0};
     static constexpr double controlPointsPerSecond_{2.0};
+    static constexpr int roundDurationSeconds_{180};
+    static constexpr int intermissionSeconds_{10};
   };
 }
