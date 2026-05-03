@@ -29,6 +29,7 @@ namespace arena
     std::string id;
     std::string name;
     std::string color;
+    bool bot{false};
     int score{0};
     int orbQuestProgress{0};
     double controlCarry{0.0};
@@ -45,7 +46,10 @@ namespace arena
     std::chrono::steady_clock::time_point shieldReadyAt;
     std::chrono::steady_clock::time_point magnetUntil;
     std::chrono::steady_clock::time_point magnetReadyAt;
+    std::chrono::steady_clock::time_point nextBotDecisionAt;
     double facingX{1.0};
     double facingY{0.0};
+    double botTargetX{0.0};
+    double botTargetY{0.0};
   };
 }

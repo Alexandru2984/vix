@@ -21,6 +21,7 @@ namespace arena
         {"x", player.x},
         {"y", player.y},
         {"color", player.color},
+        {"bot", player.bot},
         {"score", player.score},
         {"quest", {
                       {"name", "Orb Run"},

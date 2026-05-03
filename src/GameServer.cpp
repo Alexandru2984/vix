@@ -25,6 +25,13 @@ namespace arena
           0,
           std::chrono::duration_cast<std::chrono::milliseconds>(until - now).count());
     }
+
+    double distanceSq(double ax, double ay, double bx, double by)
+    {
+      const double dx = ax - bx;
+      const double dy = ay - by;
+      return dx * dx + dy * dy;
+    }
   }
 
   GameServer::GameServer()
@@ -86,6 +93,10 @@ namespace arena
         players_.erase(id);
         left = {{"type", "player_left"}, {"id", id}};
         hasLeft = true;
+        if (humanCountLocked() == 0)
+        {
+          removeBotsLocked();
+        }
       }
     }
 
@@ -175,7 +186,7 @@ namespace arena
       }
       else
       {
-        if (players_.size() >= maxPlayers_)
+        if (humanCountLocked() >= maxPlayers_)
         {
           welcome = errorMessage("arena full");
           history.clear();
@@ -198,6 +209,7 @@ namespace arena
           player.color = randomColor();
           player.x = x;
           player.y = y;
+          player.bot = false;
           player.session = session->shared_from_this();
           player.lastSeen = std::chrono::steady_clock::now();
           player.lastInput = player.lastSeen - std::chrono::seconds(1);
@@ -214,6 +226,7 @@ namespace arena
           sessionToPlayer_[session] = id;
           players_[id] = std::move(player);
           addEventLocked("join", playerName + " joined the arena");
+          ensureBotsLocked(std::chrono::steady_clock::now());
 
           welcome = {{"type", "welcome"}, {"id", id}, {"world", worldSummary(world_)}};
           joined = {{"type", "player_joined"}, {"id", id}, {"name", playerName}};
@@ -479,6 +492,8 @@ namespace arena
     ensurePowerupsLocked();
     updateRoundLocked();
     const auto now = std::chrono::steady_clock::now();
+    ensureBotsLocked(now);
+    updateBotsLocked(now);
 
     for (auto &[_, player] : players_)
     {
@@ -548,6 +563,171 @@ namespace arena
     while (powerups_.size() < targetPowerupCount_)
     {
       powerups_.push_back(spawnPowerupLocked());
+    }
+  }
+
+  std::size_t GameServer::humanCountLocked() const
+  {
+    return static_cast<std::size_t>(std::count_if(players_.begin(), players_.end(), [](const auto &entry)
+                                                 { return !entry.second.bot; }));
+  }
+
+  std::size_t GameServer::botCountLocked() const
+  {
+    return static_cast<std::size_t>(std::count_if(players_.begin(), players_.end(), [](const auto &entry)
+                                                 { return entry.second.bot; }));
+  }
+
+  void GameServer::ensureBotsLocked(std::chrono::steady_clock::time_point now)
+  {
+    const std::size_t humans = humanCountLocked();
+    if (humans == 0)
+    {
+      removeBotsLocked();
+      return;
+    }
+
+    const std::size_t desiredBots = std::min(maxBots_, targetPlayersWithBots_ > humans ? targetPlayersWithBots_ - humans : 0);
+    while (botCountLocked() < desiredBots && players_.size() < maxPlayers_)
+    {
+      Player bot = spawnBotLocked(now);
+      const std::string id = bot.id;
+      const std::string name = bot.name;
+      players_[id] = std::move(bot);
+      addEventLocked("bot", name + " booted into the arena");
+    }
+
+    while (botCountLocked() > desiredBots)
+    {
+      auto it = std::find_if(players_.begin(), players_.end(), [](const auto &entry)
+                             { return entry.second.bot; });
+      if (it == players_.end())
+        break;
+      addEventLocked("bot", it->second.name + " left the arena");
+      players_.erase(it);
+    }
+  }
+
+  void GameServer::removeBotsLocked()
+  {
+    for (auto it = players_.begin(); it != players_.end();)
+    {
+      if (it->second.bot)
+      {
+        it = players_.erase(it);
+      }
+      else
+      {
+        ++it;
+      }
+    }
+  }
+
+  Player GameServer::spawnBotLocked(std::chrono::steady_clock::time_point now)
+  {
+    auto [x, y] = world_.randomSpawn(rng_);
+    const std::uint64_t n = nextBotNumber_++;
+
+    Player bot;
+    bot.id = "bot-" + std::to_string(n);
+    bot.name = "Bot " + std::to_string(n);
+    bot.color = randomColor();
+    bot.bot = true;
+    bot.x = x;
+    bot.y = y;
+    bot.lastSeen = now;
+    bot.lastInput = now;
+    bot.lastChat = now;
+    bot.speedBoostUntil = now;
+    bot.dashReadyAt = now + std::chrono::milliseconds(700 + static_cast<int>((n % 4) * 220));
+    bot.shieldUntil = now;
+    bot.shieldReadyAt = now + std::chrono::milliseconds(1800 + static_cast<int>((n % 3) * 500));
+    bot.magnetUntil = now;
+    bot.magnetReadyAt = now + std::chrono::milliseconds(1200 + static_cast<int>((n % 5) * 350));
+    bot.nextBotDecisionAt = now;
+    bot.botTargetX = x;
+    bot.botTargetY = y;
+    chooseBotTargetLocked(bot, now);
+    return bot;
+  }
+
+  void GameServer::chooseBotTargetLocked(Player &bot, std::chrono::steady_clock::time_point now)
+  {
+    std::uniform_int_distribution<int> modeDist(0, 99);
+    const int mode = modeDist(rng_);
+
+    if (!orbs_.empty() && mode < 68)
+    {
+      const auto best = std::min_element(orbs_.begin(), orbs_.end(), [&bot](const Orb &a, const Orb &b)
+                                         { return distanceSq(bot.x, bot.y, a.x, a.y) < distanceSq(bot.x, bot.y, b.x, b.y); });
+      bot.botTargetX = best->x;
+      bot.botTargetY = best->y;
+    }
+    else if (!powerups_.empty() && mode < 86)
+    {
+      std::uniform_int_distribution<std::size_t> dist(0, powerups_.size() - 1);
+      const auto &powerup = powerups_[dist(rng_)];
+      bot.botTargetX = powerup.x;
+      bot.botTargetY = powerup.y;
+    }
+    else if (mode < 96)
+    {
+      bot.botTargetX = controlZoneX_;
+      bot.botTargetY = controlZoneY_;
+    }
+    else
+    {
+      std::uniform_real_distribution<double> xdist(World::playerRadius + 20.0, world_.width() - World::playerRadius - 20.0);
+      std::uniform_real_distribution<double> ydist(World::playerRadius + 20.0, world_.height() - World::playerRadius - 20.0);
+      bot.botTargetX = xdist(rng_);
+      bot.botTargetY = ydist(rng_);
+    }
+
+    std::uniform_int_distribution<int> delayDist(550, 1500);
+    bot.nextBotDecisionAt = now + std::chrono::milliseconds(delayDist(rng_));
+  }
+
+  void GameServer::updateBotsLocked(std::chrono::steady_clock::time_point now)
+  {
+    for (auto &[_, bot] : players_)
+    {
+      if (!bot.bot)
+        continue;
+
+      bot.lastSeen = now;
+      const double dx = bot.botTargetX - bot.x;
+      const double dy = bot.botTargetY - bot.y;
+      const double dist = std::sqrt(dx * dx + dy * dy);
+
+      if (dist < 36.0 || now >= bot.nextBotDecisionAt)
+      {
+        chooseBotTargetLocked(bot, now);
+      }
+
+      const double tx = bot.botTargetX - bot.x;
+      const double ty = bot.botTargetY - bot.y;
+      bot.input.left = tx < -18.0;
+      bot.input.right = tx > 18.0;
+      bot.input.up = ty < -18.0;
+      bot.input.down = ty > 18.0;
+
+      if (dist > 300.0 && now >= bot.dashReadyAt)
+      {
+        bot.dashReadyAt = now + std::chrono::milliseconds(dashCooldownMs_ + 700);
+        applyDashLocked(bot, now);
+        addEventLocked("dash", bot.name + " dashed");
+      }
+      if (!orbs_.empty() && now >= bot.magnetReadyAt)
+      {
+        const auto nearby = std::count_if(orbs_.begin(), orbs_.end(), [&bot](const Orb &orb)
+                                          { return distanceSq(bot.x, bot.y, orb.x, orb.y) < magnetRadius_ * magnetRadius_; });
+        if (nearby >= 2)
+        {
+          bot.magnetUntil = now + std::chrono::milliseconds(magnetDurationMs_);
+          bot.magnetReadyAt = now + std::chrono::milliseconds(magnetCooldownMs_ + 900);
+          addEventLocked("magnet", bot.name + " activated magnet");
+        }
+      }
     }
   }
 
@@ -780,6 +960,11 @@ namespace arena
     const auto now = std::chrono::steady_clock::now();
     for (auto it = players_.begin(); it != players_.end();)
     {
+      if (it->second.bot)
+      {
+        ++it;
+        continue;
+      }
       const bool expiredSession = it->second.session.expired();
       const bool stale = now - it->second.lastSeen > std::chrono::seconds(20);
       if (expiredSession || stale)
@@ -1036,6 +1221,8 @@ namespace arena
         {"status", "ok"},
         {"service", "vix-arena"},
         {"players", players_.size()},
+        {"humans", humanCountLocked()},
+        {"bots", botCountLocked()},
         {"uptimeSeconds", uptimeSeconds(startedAt_)}};
   }
 
@@ -1045,6 +1232,8 @@ namespace arena
     return {
         {"service", "vix-arena"},
         {"players", players_.size()},
+        {"humans", humanCountLocked()},
+        {"bots", botCountLocked()},
         {"world", worldSummary(world_)},
         {"orbs", orbsJsonLocked()},
         {"powerups", powerupsJsonLocked()},
@@ -1059,6 +1248,8 @@ namespace arena
     return {
         {"service", "vix-arena"},
         {"connectedPlayers", players_.size()},
+        {"humanPlayers", humanCountLocked()},
+        {"botPlayers", botCountLocked()},
         {"maxPlayers", maxPlayers_},
         {"uptimeSeconds", uptimeSeconds(startedAt_)},
         {"tickRateTarget", tickRateTarget_},

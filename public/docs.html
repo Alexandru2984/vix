@@ -20,7 +20,7 @@
   <body>
     <article class="doc">
       <h1>VixArena</h1>
-      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, and serves a plain browser canvas frontend with an objective HUD, minimap, edge target markers, score popups, quick pings, sound toggle, and touch controls.</p>
+      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, and serves a plain browser canvas frontend with an objective HUD, minimap, edge target markers, score popups, quick pings, sound toggle, and touch controls.</p>
 
       <h2>Controls</h2>
       <ul>
@@ -30,6 +30,7 @@
         <li><code>E</code> uses magnet.</li>
         <li>The touch joystick moves the player on mobile and touchscreen devices. Dragging directly on the arena also starts a floating joystick.</li>
         <li>Ability buttons and quick pings work on desktop and touch devices.</li>
+        <li>When humans are connected, bots fill the arena up to four total players for solo practice.</li>
         <li>Collect glowing orbs for instant points.</li>
         <li>Complete Orb Run by collecting 3 orbs for a bonus.</li>
         <li>Grab violet speed boosts for temporary faster movement.</li>
@@ -44,7 +45,7 @@
         <li><code>GET /</code> game page.</li>
         <li><code>GET /health</code> health JSON with service status, player count, and uptime.</li>
         <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, powerups, round state, and control zone.</li>
-        <li><code>GET /api/stats</code> runtime counters, tick target, pickups, rounds, and control-zone points.</li>
+        <li><code>GET /api/stats</code> runtime counters, human/bot player counts, tick target, pickups, rounds, and control-zone points.</li>
         <li><code>GET /docs</code> this page.</li>
       </ul>
 

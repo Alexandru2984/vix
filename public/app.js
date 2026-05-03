@@ -257,7 +257,7 @@
       const li = document.createElement("li");
       if (p.id === state.localId) li.className = "me";
       const name = document.createElement("span");
-      name.textContent = `${p.name || "Player"} `;
+      name.textContent = `${p.name || "Player"}${p.bot ? " [BOT]" : ""} `;
       const score = document.createElement("b");
       score.textContent = String(p.score || 0);
       li.append(name, score);
@@ -765,6 +765,7 @@
       rp.y += (target.y - rp.y) * 0.28;
       rp.name = target.name;
       rp.color = target.color;
+      rp.bot = Boolean(target.bot);
       rp.score = target.score || 0;
       rp.boostMs = target.boostMs || 0;
       rp.abilities = target.abilities || {};
@@ -1041,8 +1042,14 @@
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.lineWidth = p.id === state.localId ? 3 : 2;
-      ctx.strokeStyle = p.id === state.localId ? "#ffffff" : "rgba(255,255,255,0.58)";
+      ctx.strokeStyle = p.id === state.localId ? "#ffffff" : p.bot ? "rgba(154,168,184,0.70)" : "rgba(255,255,255,0.58)";
       ctx.stroke();
+      if (p.bot) {
+        ctx.font = "700 10px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#0d1117";
+        ctx.fillText("AI", p.x, p.y + 3);
+      }
       if (p.boostMs > 0) {
         ctx.beginPath();
         ctx.strokeStyle = "rgba(201,167,255,0.78)";
@@ -1067,8 +1074,8 @@
 
       ctx.font = "13px system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillStyle = "#edf2f7";
-      ctx.fillText(p.name || "Player", p.x, p.y - 28);
+      ctx.fillStyle = p.bot ? "#9aa8b8" : "#edf2f7";
+      ctx.fillText(`${p.name || "Player"}${p.bot ? " BOT" : ""}`, p.x, p.y - 28);
       ctx.fillStyle = "#ffcc66";
       ctx.fillText(String(p.score || 0), p.x, p.y + 39);
     }

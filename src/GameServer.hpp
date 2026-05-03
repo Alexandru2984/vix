@@ -77,6 +77,13 @@ namespace arena
 
     void tickLoop();
     void step(double dt);
+    void ensureBotsLocked(std::chrono::steady_clock::time_point now);
+    void removeBotsLocked();
+    void updateBotsLocked(std::chrono::steady_clock::time_point now);
+    [[nodiscard]] Player spawnBotLocked(std::chrono::steady_clock::time_point now);
+    void chooseBotTargetLocked(Player &bot, std::chrono::steady_clock::time_point now);
+    [[nodiscard]] std::size_t humanCountLocked() const;
+    [[nodiscard]] std::size_t botCountLocked() const;
     void ensureOrbsLocked();
     void ensurePowerupsLocked();
     void updateRoundLocked();
@@ -126,6 +133,7 @@ namespace arena
     std::uint64_t totalQuestsCompleted_{0};
     std::uint64_t nextOrbNumber_{1};
     std::uint64_t nextPowerupNumber_{1};
+    std::uint64_t nextBotNumber_{1};
     std::uint64_t nextEventNumber_{1};
     std::uint64_t roundNumber_{1};
     std::uint64_t totalRoundsCompleted_{0};
@@ -138,6 +146,8 @@ namespace arena
 
     static constexpr int tickRateTarget_{20};
     static constexpr std::size_t maxPlayers_{64};
+    static constexpr std::size_t targetPlayersWithBots_{4};
+    static constexpr std::size_t maxBots_{3};
     static constexpr int orbQuestGoal_{3};
     static constexpr int orbQuestReward_{20};
     static constexpr double playerSpeed_{235.0};
