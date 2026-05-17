@@ -12,7 +12,7 @@ cd vix
 ./scripts/check.sh
 ```
 
-`scripts/check.sh` builds the project, runs the CTest suite, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/metrics`, `/`, and `/docs`.
+`scripts/check.sh` builds the project, runs the CTest suite, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/metrics`, `/`, `/docs`, security headers, and WebSocket Origin rejection.
 
 To build only:
 
@@ -91,9 +91,12 @@ APP_PORT=18080
 WS_HOST=127.0.0.1
 WS_PORT=18081
 PUBLIC_URL=https://vix.micutu.com
+ALLOWED_ORIGINS=https://vix.micutu.com,http://127.0.0.1:18080,http://localhost:18080
+ALLOW_MISSING_ORIGIN=true
 ```
 
 `APP_PORT` serves both HTTP and WebSocket traffic. The WebSocket endpoint is `/ws`.
+`ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are allowed by default for local CLI smoke tests and can be disabled with `ALLOW_MISSING_ORIGIN=false`.
 
 ## Features
 
@@ -219,6 +222,10 @@ Deploy verification:
 
 - The production app binds only to localhost.
 - Nginx handles the public TLS endpoint.
+- WebSocket browser Origins are checked against `ALLOWED_ORIGINS` and `PUBLIC_URL`.
+- Per-client WebSocket outboxes are capped to avoid unbounded memory growth.
+- The app handles `SIGTERM`/`SIGINT` for graceful shutdown under systemd.
+- HTTP responses include baseline security headers: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`.
 - Display names and chat messages are length-limited and cleaned of control characters.
 - WebSocket payload size is capped before JSON parsing.
 - Invalid JSON and unknown message types are rejected.

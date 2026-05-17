@@ -1,13 +1,18 @@
 #include <utility>
 
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/websocket.hpp>
+#include <cctype>
 #include <cstdlib>
+#include <csignal>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -25,6 +30,15 @@ using tcp = asio::ip::tcp;
 
 namespace
 {
+  constexpr std::size_t maxWsOutboxMessages = 128;
+  constexpr std::size_t maxWsOutboxBytes = 1024 * 1024;
+
+  struct AppConfig
+  {
+    std::set<std::string> allowedOrigins;
+    bool allowMissingOrigin{true};
+  };
+
   std::string trim(std::string value)
   {
     while (!value.empty() && (value.front() == ' ' || value.front() == '\t'))
@@ -32,6 +46,45 @@ namespace
     while (!value.empty() && (value.back() == ' ' || value.back() == '\t' || value.back() == '\r'))
       value.pop_back();
     return value;
+  }
+
+  std::string originFromUrl(const std::string &url)
+  {
+    const auto schemeEnd = url.find("://");
+    if (schemeEnd == std::string::npos)
+      return {};
+
+    const auto authorityStart = schemeEnd + 3;
+    auto authorityEnd = url.find_first_of("/?#", authorityStart);
+    if (authorityEnd == std::string::npos)
+      authorityEnd = url.size();
+
+    if (authorityEnd <= authorityStart)
+      return {};
+
+    return url.substr(0, authorityEnd);
+  }
+
+  std::set<std::string> parseOriginList(const std::string &value)
+  {
+    std::set<std::string> origins;
+    std::size_t start = 0;
+    while (start < value.size())
+    {
+      const auto comma = value.find(',', start);
+      const auto end = comma == std::string::npos ? value.size() : comma;
+      std::string item = trim(value.substr(start, end - start));
+      if (!item.empty())
+      {
+        if (const std::string origin = originFromUrl(item); !origin.empty())
+          item = origin;
+        origins.insert(std::move(item));
+      }
+      if (comma == std::string::npos)
+        break;
+      start = comma + 1;
+    }
+    return origins;
   }
 
   std::unordered_map<std::string, std::string> readDotEnv(const std::filesystem::path &path)
@@ -74,6 +127,16 @@ namespace
     {
       return fallback;
     }
+  }
+
+  bool envBool(const std::unordered_map<std::string, std::string> &fileEnv,
+               const char *key,
+               bool fallback)
+  {
+    std::string value = envString(fileEnv, key, fallback ? "true" : "false");
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c)
+                   { return static_cast<char>(std::tolower(c)); });
+    return value == "1" || value == "true" || value == "yes" || value == "on";
   }
 
   std::string mimeType(const std::filesystem::path &path)
@@ -124,10 +187,33 @@ namespace
     res.set(http::field::server, "VixArena");
     res.set(http::field::content_type, contentType);
     res.set(http::field::cache_control, "no-store");
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set(http::field::x_frame_options, "DENY");
+    res.set("Referrer-Policy", "no-referrer");
+    res.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)");
+    res.set("Content-Security-Policy",
+            "default-src 'self'; "
+            "connect-src 'self' ws: wss:; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'");
     res.keep_alive(req.keep_alive());
     res.body() = std::move(body);
     res.prepare_payload();
     return res;
+  }
+
+  template <class Body, class Allocator>
+  bool originAllowed(const http::request<Body, http::basic_fields<Allocator>> &req, const AppConfig &config)
+  {
+    const auto originIt = req.find(http::field::origin);
+    if (originIt == req.end())
+      return config.allowMissingOrigin;
+
+    const std::string origin = std::string(originIt->value());
+    return config.allowedOrigins.contains(origin);
   }
 
   void logJson(std::string level, std::string event, nlohmann::json fields = nlohmann::json::object())
@@ -208,8 +294,17 @@ namespace
       auto self = shared_from_this();
       asio::post(ws_.get_executor(), [self, message]
                  {
+                   if (self->outbox_.size() >= maxWsOutboxMessages ||
+                       self->outboxBytes_ + message.size() > maxWsOutboxBytes)
+                   {
+                     self->closeClient();
+                     beast::error_code ec;
+                     self->ws_.close(websocket::close_code::policy_error, ec);
+                     return;
+                   }
                    const bool writing = !self->outbox_.empty();
                    self->outbox_.push_back(message);
+                   self->outboxBytes_ += message.size();
                    if (!writing)
                      self->write();
                  });
@@ -230,6 +325,7 @@ namespace
         closeClient();
         return;
       }
+      outboxBytes_ -= std::min(outboxBytes_, outbox_.front().size());
       outbox_.pop_front();
       if (!outbox_.empty())
         write();
@@ -247,13 +343,14 @@ namespace
     arena::GameServer &game_;
     std::shared_ptr<arena::ClientConnection> client_;
     std::deque<std::string> outbox_;
+    std::size_t outboxBytes_{0};
   };
 
   class HttpSession : public std::enable_shared_from_this<HttpSession>
   {
   public:
-    HttpSession(tcp::socket socket, arena::GameServer &game, std::filesystem::path root)
-        : socket_(std::move(socket)), game_(game), root_(std::move(root))
+    HttpSession(tcp::socket socket, arena::GameServer &game, std::filesystem::path root, const AppConfig &config)
+        : socket_(std::move(socket)), game_(game), root_(std::move(root)), config_(config)
     {
     }
 
@@ -280,6 +377,16 @@ namespace
 
       if (websocket::is_upgrade(req_) && req_.target().starts_with("/ws"))
       {
+        if (!originAllowed(req_, config_))
+        {
+          const std::string body = "forbidden websocket origin";
+          http::response<http::string_body> res = makeResponse(req_, http::status::forbidden, body, "text/plain; charset=utf-8");
+          auto self = shared_from_this();
+          auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
+          http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
+                            { self->onWrite(ec, true); });
+          return;
+        }
         std::make_shared<WebSocketSession>(std::move(socket_), game_)->run(std::move(req_));
         return;
       }
@@ -383,14 +490,15 @@ namespace
     beast::flat_buffer buffer_;
     arena::GameServer &game_;
     std::filesystem::path root_;
+    const AppConfig &config_;
     http::request<http::string_body> req_;
   };
 
   class Listener : public std::enable_shared_from_this<Listener>
   {
   public:
-    Listener(asio::io_context &ioc, tcp::endpoint endpoint, arena::GameServer &game, std::filesystem::path root)
-        : ioc_(ioc), acceptor_(ioc), game_(game), root_(std::move(root))
+    Listener(asio::io_context &ioc, tcp::endpoint endpoint, arena::GameServer &game, std::filesystem::path root, const AppConfig &config)
+        : ioc_(ioc), acceptor_(ioc), game_(game), root_(std::move(root)), config_(config)
     {
       beast::error_code ec;
       acceptor_.open(endpoint.protocol(), ec);
@@ -423,7 +531,7 @@ namespace
     void onAccept(beast::error_code ec, tcp::socket socket)
     {
       if (!ec)
-        std::make_shared<HttpSession>(std::move(socket), game_, root_)->run();
+        std::make_shared<HttpSession>(std::move(socket), game_, root_, config_)->run();
       accept();
     }
 
@@ -431,6 +539,7 @@ namespace
     tcp::acceptor acceptor_;
     arena::GameServer &game_;
     std::filesystem::path root_;
+    const AppConfig &config_;
   };
 }
 
@@ -440,6 +549,14 @@ int main()
   const auto fileEnv = readDotEnv(root / ".env");
   const std::string appHost = envString(fileEnv, "APP_HOST", "127.0.0.1");
   const int appPort = envInt(fileEnv, "APP_PORT", 18080);
+  const std::string publicUrl = envString(fileEnv, "PUBLIC_URL", "");
+  AppConfig config;
+  config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", true);
+  config.allowedOrigins = parseOriginList(envString(fileEnv, "ALLOWED_ORIGINS", ""));
+  if (const std::string publicOrigin = originFromUrl(publicUrl); !publicOrigin.empty())
+    config.allowedOrigins.insert(publicOrigin);
+  config.allowedOrigins.insert("http://127.0.0.1:" + std::to_string(appPort));
+  config.allowedOrigins.insert("http://localhost:" + std::to_string(appPort));
 
   try
   {
@@ -448,13 +565,26 @@ int main()
 
     asio::io_context ioc{static_cast<int>(std::max(2u, std::thread::hardware_concurrency()))};
     const auto address = asio::ip::make_address(appHost);
-    std::make_shared<Listener>(ioc, tcp::endpoint{address, static_cast<unsigned short>(appPort)}, game, root)->run();
+    std::make_shared<Listener>(ioc, tcp::endpoint{address, static_cast<unsigned short>(appPort)}, game, root, config)->run();
+
+    asio::signal_set signals(ioc, SIGINT, SIGTERM);
+    signals.async_wait([&](const beast::error_code &ec, int signal)
+                       {
+                         if (!ec)
+                         {
+                           logJson("info", "shutdown_requested", {{"signal", signal}});
+                           game.stop();
+                           ioc.stop();
+                         }
+                       });
 
     logJson("info", "server_started", {
                                          {"host", appHost},
                                          {"port", appPort},
                                          {"websocketPath", "/ws"},
-                                         {"publicUrl", envString(fileEnv, "PUBLIC_URL", "")},
+                                         {"publicUrl", publicUrl},
+                                         {"allowedOrigins", config.allowedOrigins},
+                                         {"allowMissingOrigin", config.allowMissingOrigin},
                                      });
 
     std::vector<std::thread> threads;
@@ -466,6 +596,7 @@ int main()
       thread.join();
 
     game.stop();
+    logJson("info", "server_stopped");
   }
   catch (const std::exception &e)
   {

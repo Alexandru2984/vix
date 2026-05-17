@@ -20,6 +20,9 @@ echo
 
 echo "local html:"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | sed -n '1,8p'
+if ! curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "x-content-type-options: nosniff"; then
+  echo "local security header check failed; running service may not have the hardened build deployed yet" >&2
+fi
 
 echo "local metrics:"
 if ! curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | sed -n '1,12p'; then

@@ -54,6 +54,22 @@ curl -fsS "http://${APP_HOST}:${APP_PORT}/api/state" | grep -q '"service":"vix-a
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/stats" | grep -q '"tickRateTarget"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_up 1"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -q "200 OK"
+curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "x-content-type-options: nosniff"
+curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "content-security-policy:"
+curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "x-frame-options: DENY"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/docs" | grep -q "200 OK"
+bad_origin_status="$(
+  curl -sS -o /dev/null -w "%{http_code}" \
+    -H "Connection: Upgrade" \
+    -H "Upgrade: websocket" \
+    -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    -H "Origin: https://evil.example" \
+    "http://${APP_HOST}:${APP_PORT}/ws"
+)"
+if [[ "${bad_origin_status}" != "403" ]]; then
+  echo "expected bad websocket origin to return 403, got ${bad_origin_status}" >&2
+  exit 1
+fi
 
-echo "check ok: build + tests + local HTTP/metrics smoke tests passed on ${APP_HOST}:${APP_PORT}"
+echo "check ok: build + tests + local HTTP/metrics/security smoke tests passed on ${APP_HOST}:${APP_PORT}"
