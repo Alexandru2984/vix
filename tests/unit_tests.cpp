@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -129,6 +130,7 @@ namespace
     player.x = 12.5;
     player.y = 44.0;
     player.score = 42;
+    player.input.seq = 123;
     player.orbQuestProgress = 2;
     player.speedBoostUntil = now + std::chrono::milliseconds(1500);
     player.dashReadyAt = now;
@@ -140,10 +142,14 @@ namespace
     const auto json = arena::playerToJson(player);
     requireEq(json.value("id", ""), std::string("p-7"), "player id should serialize");
     requireEq(json.value("score", 0), 42, "player score should serialize");
+    requireEq(json.value("inputSeq", 0), 123, "input sequence should serialize");
     requireEq(json.at("quest").value("progress", 0), 2, "quest progress should serialize");
     require(json.at("boostMs").get<std::int64_t>() > 0, "boost should be active");
     require(json.at("abilities").at("shieldCooldownMs").get<std::int64_t>() > 0, "shield cooldown should be positive");
-    requireEq(arena::errorMessage("bad").dump(), std::string("{\"message\":\"bad\",\"type\":\"error\"}"), "error shape should stay stable");
+    const auto error = arena::errorMessage("bad");
+    requireEq(error.value("type", ""), std::string("error"), "error type should stay stable");
+    requireEq(error.value("message", ""), std::string("bad"), "error message should stay stable");
+    requireEq(error.value("protocolVersion", 0), arena::protocolVersion, "error should expose protocol version");
     requireEq(arena::makePlayerId(9), std::string("p-9"), "player id helper");
     requireEq(arena::makeGuestName(9), std::string("Guest 1009"), "guest helper");
   }
@@ -168,11 +174,16 @@ namespace
     CapturedClient client;
     server.onOpen(client.connection);
 
-    server.onMessage(client.connection.get(), R"({"type":"join","name":"  Test Pilot  "})");
+    server.onMessage(client.connection.get(), R"({"type":"join","name":"  Test Pilot  ","protocolVersion":2,"supports":["snapshot_delta"]})");
     const auto *welcome = client.firstType("welcome");
     require(welcome != nullptr, "join should send welcome");
     requireEq(welcome->value("id", ""), std::string("p-1"), "first player id should be stable");
+    requireEq(welcome->value("protocolVersion", 0), arena::protocolVersion, "welcome should expose protocol version");
     require(client.sawType("snapshot"), "join should send snapshot");
+    const auto *initialSnapshot = client.firstType("snapshot");
+    require(initialSnapshot != nullptr && initialSnapshot->value("full", false), "initial snapshot should be full");
+    require(initialSnapshot != nullptr && initialSnapshot->value("snapshotId", 0) > 0, "snapshot should have id");
+    require(initialSnapshot != nullptr && initialSnapshot->value("tick", -1) >= 0, "snapshot should have tick");
 
     const auto health = server.healthJson();
     requireEq(health.value("humans", 0), 1, "one human should be joined");
@@ -189,6 +200,7 @@ namespace
     const auto stats = server.statsJson();
     requireEq(stats.value("totalConnectionsSinceStart", 0), 1, "connection counter");
     requireEq(stats.value("totalChatMessagesSinceStart", 0), 1, "accepted chat counter");
+    requireEq(stats.value("protocolVersion", 0), arena::protocolVersion, "stats should expose protocol version");
 
     server.onClose(client.connection.get());
     const auto afterClose = server.healthJson();
@@ -218,6 +230,26 @@ namespace
     require(metrics.find("vix_arena_ws_messages_received_total") != std::string::npos, "metrics should include websocket counters");
     require(metrics.find("vix_arena_tick_duration_microseconds_p95") != std::string::npos, "metrics should include tick duration gauges");
   }
+
+  void gameServerNegotiatesSnapshotDeltas()
+  {
+    arena::GameServer server;
+    CapturedClient client;
+    server.onOpen(client.connection);
+    server.onMessage(client.connection.get(), R"({"type":"join","name":"Delta","protocolVersion":2,"supports":["snapshot_delta"]})");
+
+    server.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(140));
+    server.stop();
+
+    require(client.sawType("snapshot"), "delta client should receive initial full snapshot");
+    require(client.sawType("snapshot_delta"), "delta client should receive negotiated snapshot deltas");
+
+    const auto stats = server.statsJson();
+    require(stats.at("websocket").value("snapshotDeltasSent", 0) > 0, "stats should count snapshot deltas");
+    const std::string metrics = server.metricsText();
+    require(metrics.find("vix_arena_ws_snapshot_deltas_sent_total") != std::string::npos, "metrics should expose snapshot deltas");
+  }
 }
 
 int main()
@@ -230,6 +262,7 @@ int main()
     run("game server rejects bad payloads", gameServerRejectsBadPayloads);
     run("game server join, chat, and rate limit flow", gameServerJoinChatAndRateLimitFlow);
     run("game server exposes stats and metrics", gameServerExposesStatsAndMetrics);
+    run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
   }
   catch (const std::exception &)
   {

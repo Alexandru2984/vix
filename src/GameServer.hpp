@@ -8,6 +8,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -68,7 +69,16 @@ namespace arena
       std::string timestamp;
     };
 
+    struct ClientProtocolState
+    {
+      int version{1};
+      bool supportsSnapshotDelta{false};
+      std::uint64_t lastSnapshotId{0};
+      nlohmann::json lastSnapshot;
+    };
+
     using SessionPtr = std::shared_ptr<ClientConnection>;
+    using PreparedPayload = std::pair<SessionPtr, std::string>;
 
     void handleJoin(ClientConnection *session, const nlohmann::json &message);
     void handleInput(ClientConnection *session, const nlohmann::json &message);
@@ -96,17 +106,20 @@ namespace arena
     void applyDashLocked(Player &player, std::chrono::steady_clock::time_point now);
     void addEventLocked(std::string type, std::string text);
     void cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents);
-    [[nodiscard]] nlohmann::json snapshotLocked() const;
+    [[nodiscard]] nlohmann::json snapshotLocked(std::uint64_t tick, std::uint64_t snapshotId) const;
+    [[nodiscard]] nlohmann::json snapshotDeltaLocked(const nlohmann::json &current, const nlohmann::json &previous, std::uint64_t baseSnapshotId) const;
     [[nodiscard]] nlohmann::json orbsJsonLocked() const;
     [[nodiscard]] nlohmann::json powerupsJsonLocked() const;
     [[nodiscard]] nlohmann::json controlZoneJson() const;
     [[nodiscard]] nlohmann::json roundJsonLocked() const;
     [[nodiscard]] nlohmann::json eventsJsonLocked() const;
     [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked() const;
+    [[nodiscard]] std::vector<PreparedPayload> snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const nlohmann::json &snapshot);
 
     void send(ClientConnection *session, const nlohmann::json &message);
     void broadcast(const nlohmann::json &message);
     void broadcastTo(const std::vector<SessionPtr> &sessions, const nlohmann::json &message);
+    void sendPrepared(const std::vector<PreparedPayload> &payloads, bool snapshotLike);
     void recordTickDurationLocked(std::uint64_t durationUs);
 
     [[nodiscard]] std::string randomColor();
@@ -117,6 +130,7 @@ namespace arena
     World world_;
     std::unordered_map<std::string, Player> players_;
     std::unordered_map<ClientConnection *, std::string> sessionToPlayer_;
+    std::unordered_map<ClientConnection *, ClientProtocolState> sessionProtocol_;
     std::deque<nlohmann::json> chatHistory_;
     std::deque<GameEvent> eventHistory_;
     std::vector<Orb> orbs_;
@@ -139,6 +153,8 @@ namespace arena
     std::uint64_t nextEventNumber_{1};
     std::uint64_t roundNumber_{1};
     std::uint64_t totalRoundsCompleted_{0};
+    std::uint64_t currentTick_{0};
+    std::uint64_t nextSnapshotId_{1};
     std::deque<std::uint64_t> recentTickDurationsUs_;
     std::uint64_t totalTicks_{0};
     std::uint64_t maxTickDurationUs_{0};
@@ -182,6 +198,8 @@ namespace arena
     std::atomic<std::uint64_t> totalMessageBytesSent_{0};
     std::atomic<std::uint64_t> totalSnapshotsSent_{0};
     std::atomic<std::uint64_t> totalSnapshotBytesSent_{0};
+    std::atomic<std::uint64_t> totalSnapshotDeltasSent_{0};
+    std::atomic<std::uint64_t> totalSnapshotDeltaBytesSent_{0};
     std::atomic<std::uint64_t> totalRejectedMessages_{0};
     std::atomic<std::uint64_t> totalRateLimitRejects_{0};
     std::atomic<std::uint64_t> totalSendFailures_{0};

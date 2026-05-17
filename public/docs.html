@@ -54,7 +54,7 @@
       <p>Public endpoint: <code>wss://vix.micutu.com/ws</code>. Browser clients automatically use <code>wss://</code> when the page is served over HTTPS.</p>
 
       <h2>Client messages</h2>
-      <pre><code>{"type":"join","name":"Micu"}</code></pre>
+      <pre><code>{"type":"join","name":"Micu","protocolVersion":2,"supports":["snapshot_delta"]}</code></pre>
       <pre><code>{"type":"input","up":true,"down":false,"left":false,"right":true,"seq":123}</code></pre>
       <pre><code>{"type":"ability","ability":"dash"}</code></pre>
       <pre><code>{"type":"ability","ability":"shield"}</code></pre>
@@ -63,8 +63,9 @@
       <pre><code>{"type":"ping","t":1710000000000}</code></pre>
 
       <h2>Server messages</h2>
-      <pre><code>{"type":"welcome","id":"p-1","world":{"width":2000,"height":1200,"obstacles":[]}}</code></pre>
-      <pre><code>{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[{"id":1,"type":"orb","text":"Micu collected +5","timestamp":"2026-05-03T17:00:00Z"}]}</code></pre>
+      <pre><code>{"type":"welcome","protocolVersion":2,"serverTimeMs":1779035000000,"id":"p-1","features":["snapshot_delta"],"world":{"width":2000,"height":1200,"obstacles":[]}}</code></pre>
+      <pre><code>{"type":"snapshot","protocolVersion":2,"snapshotId":1,"baseSnapshotId":null,"tick":1,"full":true,"serverTimeMs":1779035000050,"players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[{"id":1,"type":"orb","text":"Micu collected +5","timestamp":"2026-05-03T17:00:00Z"}]}</code></pre>
+      <pre><code>{"type":"snapshot_delta","protocolVersion":2,"snapshotId":2,"baseSnapshotId":1,"tick":2,"full":false,"serverTimeMs":1779035000100,"players":[],"removedPlayers":[],"orbs":[],"removedOrbs":[],"powerups":[],"removedPowerups":[],"events":[],"removedEvents":[]}</code></pre>
       <pre><code>{"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}</code></pre>
       <pre><code>{"type":"ability","id":"p-1","ability":"dash","timestamp":"2026-05-03T17:00:00Z"}</code></pre>
       <pre><code>{"type":"player_joined","id":"p-1","name":"Micu"}</code></pre>

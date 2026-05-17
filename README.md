@@ -136,10 +136,12 @@ vix-arena C++ server
 
 ## WebSocket Protocol
 
+Detailed protocol notes live in [docs/protocol.md](docs/protocol.md).
+
 Client messages:
 
 ```json
-{"type":"join","name":"Micu"}
+{"type":"join","name":"Micu","protocolVersion":2,"supports":["snapshot_delta"]}
 {"type":"input","up":true,"down":false,"left":false,"right":true,"seq":123}
 {"type":"ability","ability":"dash"}
 {"type":"ability","ability":"shield"}
@@ -151,8 +153,9 @@ Client messages:
 Server messages:
 
 ```json
-{"type":"welcome","id":"p-1","world":{"width":2000,"height":1200,"obstacles":[]}}
-{"type":"snapshot","players":[],"orbs":[],"powerups":[],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[]}
+{"type":"welcome","protocolVersion":2,"serverTimeMs":1779035000000,"id":"p-1","features":["snapshot_delta"],"world":{"width":2000,"height":1200,"obstacles":[]}}
+{"type":"snapshot","protocolVersion":2,"snapshotId":1,"baseSnapshotId":null,"tick":1,"full":true,"serverTimeMs":1779035000050,"players":[],"orbs":[],"powerups":[],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[]}
+{"type":"snapshot_delta","protocolVersion":2,"snapshotId":2,"baseSnapshotId":1,"tick":2,"full":false,"serverTimeMs":1779035000100,"players":[],"removedPlayers":[],"orbs":[],"removedOrbs":[],"powerups":[],"removedPowerups":[],"events":[],"removedEvents":[]}
 {"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}
 {"type":"player_joined","id":"p-1","name":"Micu"}
 {"type":"player_left","id":"p-1"}
@@ -181,7 +184,7 @@ Current metrics include:
 - process health and uptime
 - current humans, bots, and total connected players
 - WebSocket messages and bytes received/sent
-- snapshots and snapshot bytes sent
+- full snapshots, delta snapshots, and snapshot bytes sent
 - rejected messages, rate-limit rejections, and send failures
 - authoritative tick count and recent tick duration p50/p95/p99/max
 - accepted chat messages, pickups, quests, rounds, and control-zone points

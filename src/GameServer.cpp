@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <iostream>
 #include <sstream>
+#include <unordered_map>
 
 #include "Protocol.hpp"
 #include "Utils.hpp"
@@ -50,6 +51,62 @@ namespace arena
       out << "# HELP " << name << ' ' << help << '\n';
       out << "# TYPE " << name << ' ' << type << '\n';
       out << name << ' ' << value << '\n';
+    }
+
+    bool jsonArrayContainsString(const nlohmann::json &array, std::string_view value)
+    {
+      if (!array.is_array())
+      {
+        return false;
+      }
+      return std::any_of(array.begin(), array.end(), [&](const nlohmann::json &item)
+                         { return item.is_string() && item.get<std::string>() == value; });
+    }
+
+    nlohmann::json collectionDelta(const nlohmann::json &current, const nlohmann::json &previous)
+    {
+      std::unordered_map<std::string, nlohmann::json> previousById;
+      if (previous.is_array())
+      {
+        for (const auto &item : previous)
+        {
+          if (item.contains("id") && item["id"].is_string())
+          {
+            previousById[item["id"].get<std::string>()] = item;
+          }
+        }
+      }
+
+      nlohmann::json upserts = nlohmann::json::array();
+      std::unordered_map<std::string, bool> currentIds;
+      if (current.is_array())
+      {
+        for (const auto &item : current)
+        {
+          if (!item.contains("id") || !item["id"].is_string())
+          {
+            continue;
+          }
+          const std::string id = item["id"].get<std::string>();
+          currentIds[id] = true;
+          const auto previousIt = previousById.find(id);
+          if (previousIt == previousById.end() || previousIt->second != item)
+          {
+            upserts.push_back(item);
+          }
+        }
+      }
+
+      nlohmann::json removed = nlohmann::json::array();
+      for (const auto &[id, _] : previousById)
+      {
+        if (!currentIds.contains(id))
+        {
+          removed.push_back(id);
+        }
+      }
+
+      return {{"upserts", upserts}, {"removed", removed}};
     }
 
   }
@@ -110,8 +167,9 @@ namespace arena
       {
         const std::string id = it->second;
         sessionToPlayer_.erase(it);
+        sessionProtocol_.erase(session);
         players_.erase(id);
-        left = {{"type", "player_left"}, {"id", id}};
+        left = {{"type", "player_left"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", id}};
         hasLeft = true;
         if (humanCountLocked() == 0)
         {
@@ -201,14 +259,34 @@ namespace arena
         {
           welcome = {
               {"type", "welcome"},
+              {"protocolVersion", protocolVersion},
+              {"serverTimeMs", unixTimeMs()},
               {"id", pit->second.id},
+              {"features", nlohmann::json::array({std::string(protocolFeatureSnapshotDelta)})},
               {"world", worldSummary(world_)}};
-          snapshot = snapshotLocked();
+          snapshot = snapshotLocked(currentTick_, nextSnapshotId_++);
+          auto state = sessionProtocol_.find(session);
+          if (state != sessionProtocol_.end())
+          {
+            state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
+            state->second.lastSnapshot = snapshot;
+          }
           history.assign(chatHistory_.begin(), chatHistory_.end());
         }
       }
       else
       {
+        ClientProtocolState protocolState;
+        if (message.contains("protocolVersion") && message["protocolVersion"].is_number_integer())
+        {
+          protocolState.version = message["protocolVersion"].get<int>();
+        }
+        if (message.contains("supports"))
+        {
+          protocolState.supportsSnapshotDelta = protocolState.version >= protocolVersion &&
+                                                jsonArrayContainsString(message["supports"], protocolFeatureSnapshotDelta);
+        }
+
         if (humanCountLocked() >= maxPlayers_)
         {
           welcome = errorMessage("arena full");
@@ -247,13 +325,25 @@ namespace arena
           const std::string id = player.id;
           const std::string playerName = player.name;
           sessionToPlayer_[session] = id;
+          sessionProtocol_[session] = protocolState;
           players_[id] = std::move(player);
           addEventLocked("join", playerName + " joined the arena");
           ensureBotsLocked(std::chrono::steady_clock::now());
 
-          welcome = {{"type", "welcome"}, {"id", id}, {"world", worldSummary(world_)}};
-          joined = {{"type", "player_joined"}, {"id", id}, {"name", playerName}};
-          snapshot = snapshotLocked();
+          welcome = {
+              {"type", "welcome"},
+              {"protocolVersion", protocolVersion},
+              {"serverTimeMs", unixTimeMs()},
+              {"id", id},
+              {"features", nlohmann::json::array({std::string(protocolFeatureSnapshotDelta)})},
+              {"world", worldSummary(world_)}};
+          joined = {{"type", "player_joined"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", id}, {"name", playerName}};
+          snapshot = snapshotLocked(currentTick_, nextSnapshotId_++);
+          if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
+          {
+            state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
+            state->second.lastSnapshot = snapshot;
+          }
           history.assign(chatHistory_.begin(), chatHistory_.end());
           newPlayer = true;
         }
@@ -265,7 +355,7 @@ namespace arena
       send(session, welcome);
       if (!history.empty())
       {
-        send(session, {{"type", "chat_history"}, {"messages", history}});
+        send(session, {{"type", "chat_history"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"messages", history}});
       }
       if (!snapshot.empty())
       {
@@ -355,6 +445,8 @@ namespace arena
       pit->second.lastSeen = now;
       outgoing = {
           {"type", "chat"},
+          {"protocolVersion", protocolVersion},
+          {"serverTimeMs", unixTimeMs()},
           {"from", pit->second.name},
           {"message", text},
           {"timestamp", isoTimestampUtc()}};
@@ -388,7 +480,7 @@ namespace arena
       }
     }
 
-    nlohmann::json pong = {{"type", "pong"}};
+    nlohmann::json pong = {{"type", "pong"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}};
     if (message.contains("t"))
     {
       pong["t"] = message["t"];
@@ -435,7 +527,7 @@ namespace arena
         player.dashReadyAt = now + std::chrono::milliseconds(dashCooldownMs_);
         applyDashLocked(player, now);
         addEventLocked("dash", player.name + " dashed");
-        outgoing = {{"type", "ability"}, {"id", player.id}, {"ability", "dash"}, {"timestamp", isoTimestampUtc()}};
+        outgoing = {{"type", "ability"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", player.id}, {"ability", "dash"}, {"timestamp", isoTimestampUtc()}};
         accepted = true;
       }
       else if (ability == "shield")
@@ -448,7 +540,7 @@ namespace arena
         player.shieldUntil = now + std::chrono::milliseconds(shieldDurationMs_);
         player.shieldReadyAt = now + std::chrono::milliseconds(shieldCooldownMs_);
         addEventLocked("shield", player.name + " phased through obstacles");
-        outgoing = {{"type", "ability"}, {"id", player.id}, {"ability", "shield"}, {"timestamp", isoTimestampUtc()}};
+        outgoing = {{"type", "ability"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", player.id}, {"ability", "shield"}, {"timestamp", isoTimestampUtc()}};
         accepted = true;
       }
       else if (ability == "magnet")
@@ -461,7 +553,7 @@ namespace arena
         player.magnetUntil = now + std::chrono::milliseconds(magnetDurationMs_);
         player.magnetReadyAt = now + std::chrono::milliseconds(magnetCooldownMs_);
         addEventLocked("magnet", player.name + " activated magnet");
-        outgoing = {{"type", "ability"}, {"id", player.id}, {"ability", "magnet"}, {"timestamp", isoTimestampUtc()}};
+        outgoing = {{"type", "ability"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", player.id}, {"ability", "magnet"}, {"timestamp", isoTimestampUtc()}};
         accepted = true;
       }
       else
@@ -493,18 +585,21 @@ namespace arena
       nlohmann::json snapshot;
       std::vector<nlohmann::json> leftEvents;
       std::vector<SessionPtr> sessions;
+      std::vector<PreparedPayload> snapshotPayloads;
 
       {
         std::lock_guard<std::mutex> lock(mutex_);
+        ++currentTick_;
         step(std::min(elapsed.count(), 0.2));
         cleanupStaleLocked(leftEvents);
-        snapshot = snapshotLocked();
+        snapshot = snapshotLocked(currentTick_, nextSnapshotId_++);
         sessions = liveSessionsLocked();
+        snapshotPayloads = snapshotPayloadsLocked(sessions, snapshot);
         recordTickDurationLocked(static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - workStarted).count()));
       }
 
-      broadcastTo(sessions, snapshot);
+      sendPrepared(snapshotPayloads, true);
       for (const auto &event : leftEvents)
       {
         broadcast(event);
@@ -1008,13 +1103,18 @@ namespace arena
       const bool stale = now - it->second.lastSeen > std::chrono::seconds(20);
       if (expiredSession || stale)
       {
-        leftEvents.push_back({{"type", "player_left"}, {"id", it->second.id}});
+        leftEvents.push_back({{"type", "player_left"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", it->second.id}});
         for (auto sit = sessionToPlayer_.begin(); sit != sessionToPlayer_.end();)
         {
           if (sit->second == it->second.id)
+          {
+            sessionProtocol_.erase(sit->first);
             sit = sessionToPlayer_.erase(sit);
+          }
           else
+          {
             ++sit;
+          }
         }
         it = players_.erase(it);
       }
@@ -1025,7 +1125,7 @@ namespace arena
     }
   }
 
-  nlohmann::json GameServer::snapshotLocked() const
+  nlohmann::json GameServer::snapshotLocked(std::uint64_t tick, std::uint64_t snapshotId) const
   {
     nlohmann::json players = nlohmann::json::array();
     for (const auto &[_, player] : players_)
@@ -1035,13 +1135,55 @@ namespace arena
 
     return {
         {"type", "snapshot"},
+        {"protocolVersion", protocolVersion},
+        {"snapshotId", snapshotId},
+        {"baseSnapshotId", nullptr},
+        {"tick", tick},
+        {"full", true},
         {"players", players},
         {"orbs", orbsJsonLocked()},
         {"powerups", powerupsJsonLocked()},
         {"controlZone", controlZoneJson()},
         {"round", roundJsonLocked()},
         {"events", eventsJsonLocked()},
+        {"serverTimeMs", unixTimeMs()},
         {"serverTime", isoTimestampUtc()}};
+  }
+
+  nlohmann::json GameServer::snapshotDeltaLocked(const nlohmann::json &current, const nlohmann::json &previous, std::uint64_t baseSnapshotId) const
+  {
+    const auto players = collectionDelta(current.value("players", nlohmann::json::array()), previous.value("players", nlohmann::json::array()));
+    const auto orbs = collectionDelta(current.value("orbs", nlohmann::json::array()), previous.value("orbs", nlohmann::json::array()));
+    const auto powerups = collectionDelta(current.value("powerups", nlohmann::json::array()), previous.value("powerups", nlohmann::json::array()));
+    const auto events = collectionDelta(current.value("events", nlohmann::json::array()), previous.value("events", nlohmann::json::array()));
+
+    nlohmann::json delta = {
+        {"type", "snapshot_delta"},
+        {"protocolVersion", protocolVersion},
+        {"snapshotId", current.value("snapshotId", 0ULL)},
+        {"baseSnapshotId", baseSnapshotId},
+        {"tick", current.value("tick", 0ULL)},
+        {"full", false},
+        {"serverTimeMs", current.value("serverTimeMs", unixTimeMs())},
+        {"players", players.at("upserts")},
+        {"removedPlayers", players.at("removed")},
+        {"orbs", orbs.at("upserts")},
+        {"removedOrbs", orbs.at("removed")},
+        {"powerups", powerups.at("upserts")},
+        {"removedPowerups", powerups.at("removed")},
+        {"events", events.at("upserts")},
+        {"removedEvents", events.at("removed")}};
+
+    if (current.value("controlZone", nlohmann::json::object()) != previous.value("controlZone", nlohmann::json::object()))
+    {
+      delta["controlZone"] = current.at("controlZone");
+    }
+    if (current.value("round", nlohmann::json::object()) != previous.value("round", nlohmann::json::object()))
+    {
+      delta["round"] = current.at("round");
+    }
+
+    return delta;
   }
 
   nlohmann::json GameServer::orbsJsonLocked() const
@@ -1143,6 +1285,44 @@ namespace arena
     return sessions;
   }
 
+  std::vector<GameServer::PreparedPayload> GameServer::snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const nlohmann::json &snapshot)
+  {
+    std::vector<PreparedPayload> payloads;
+    payloads.reserve(sessions.size());
+    const std::string fullPayload = snapshot.dump();
+
+    for (const auto &session : sessions)
+    {
+      if (!session)
+      {
+        continue;
+      }
+
+      std::string payload = fullPayload;
+      auto stateIt = sessionProtocol_.find(session.get());
+      if (stateIt != sessionProtocol_.end())
+      {
+        ClientProtocolState &state = stateIt->second;
+        if (state.supportsSnapshotDelta && state.lastSnapshotId > 0 && state.lastSnapshot.is_object())
+        {
+          const nlohmann::json delta = snapshotDeltaLocked(snapshot, state.lastSnapshot, state.lastSnapshotId);
+          const std::string deltaPayload = delta.dump();
+          if (deltaPayload.size() < fullPayload.size())
+          {
+            payload = deltaPayload;
+          }
+        }
+
+        state.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
+        state.lastSnapshot = snapshot;
+      }
+
+      payloads.emplace_back(session, std::move(payload));
+    }
+
+    return payloads;
+  }
+
   void GameServer::send(ClientConnection *session, const nlohmann::json &message)
   {
     try
@@ -1155,6 +1335,16 @@ namespace arena
         if (message.value("type", "") == "error")
         {
           ++totalRejectedMessages_;
+        }
+        if (message.value("type", "") == "snapshot")
+        {
+          ++totalSnapshotsSent_;
+          totalSnapshotBytesSent_ += payload.size();
+        }
+        else if (message.value("type", "") == "snapshot_delta")
+        {
+          ++totalSnapshotDeltasSent_;
+          totalSnapshotDeltaBytesSent_ += payload.size();
         }
         session->send(payload);
       }
@@ -1179,7 +1369,9 @@ namespace arena
   void GameServer::broadcastTo(const std::vector<SessionPtr> &sessions, const nlohmann::json &message)
   {
     const std::string payload = message.dump();
-    const bool snapshot = message.value("type", "") == "snapshot";
+    const std::string type = message.value("type", "");
+    const bool snapshot = type == "snapshot";
+    const bool snapshotDelta = type == "snapshot_delta";
     for (const auto &session : sessions)
     {
       if (session && session->open.load() && session->send)
@@ -1193,6 +1385,11 @@ namespace arena
             ++totalSnapshotsSent_;
             totalSnapshotBytesSent_ += payload.size();
           }
+          else if (snapshotDelta)
+          {
+            ++totalSnapshotDeltasSent_;
+            totalSnapshotDeltaBytesSent_ += payload.size();
+          }
           session->send(payload);
         }
         catch (const std::exception &e)
@@ -1200,6 +1397,42 @@ namespace arena
           ++totalSendFailures_;
           std::cerr << "broadcast failed: " << e.what() << '\n';
         }
+      }
+    }
+  }
+
+  void GameServer::sendPrepared(const std::vector<PreparedPayload> &payloads, bool snapshotLike)
+  {
+    for (const auto &[session, payload] : payloads)
+    {
+      if (!session || !session->open.load() || !session->send)
+      {
+        continue;
+      }
+
+      try
+      {
+        ++totalMessagesSent_;
+        totalMessageBytesSent_ += payload.size();
+        if (snapshotLike)
+        {
+          if (payload.find("\"type\":\"snapshot_delta\"") != std::string::npos)
+          {
+            ++totalSnapshotDeltasSent_;
+            totalSnapshotDeltaBytesSent_ += payload.size();
+          }
+          else
+          {
+            ++totalSnapshotsSent_;
+            totalSnapshotBytesSent_ += payload.size();
+          }
+        }
+        session->send(payload);
+      }
+      catch (const std::exception &e)
+      {
+        ++totalSendFailures_;
+        std::cerr << "send failed: " << e.what() << '\n';
       }
     }
   }
@@ -1312,6 +1545,7 @@ namespace arena
         {"maxPlayers", maxPlayers_},
         {"uptimeSeconds", uptimeSeconds(startedAt_)},
         {"tickRateTarget", tickRateTarget_},
+        {"protocolVersion", protocolVersion},
         {"totalConnectionsSinceStart", totalConnections_},
         {"totalChatMessagesSinceStart", totalChatMessages_},
         {"totalOrbPickupsSinceStart", totalOrbPickups_},
@@ -1334,6 +1568,8 @@ namespace arena
                           {"messageBytesSent", totalMessageBytesSent_.load()},
                           {"snapshotsSent", totalSnapshotsSent_.load()},
                           {"snapshotBytesSent", totalSnapshotBytesSent_.load()},
+                          {"snapshotDeltasSent", totalSnapshotDeltasSent_.load()},
+                          {"snapshotDeltaBytesSent", totalSnapshotDeltaBytesSent_.load()},
                           {"rejectedMessages", totalRejectedMessages_.load()},
                           {"rateLimitRejects", totalRateLimitRejects_.load()},
                           {"sendFailures", totalSendFailures_.load()},
@@ -1388,6 +1624,8 @@ namespace arena
     appendMetric(out, "vix_arena_ws_message_bytes_sent_total", "Total WebSocket message bytes sent.", "counter", totalMessageBytesSent_.load());
     appendMetric(out, "vix_arena_ws_snapshots_sent_total", "Total WebSocket snapshots sent.", "counter", totalSnapshotsSent_.load());
     appendMetric(out, "vix_arena_ws_snapshot_bytes_sent_total", "Total WebSocket snapshot bytes sent.", "counter", totalSnapshotBytesSent_.load());
+    appendMetric(out, "vix_arena_ws_snapshot_deltas_sent_total", "Total WebSocket snapshot deltas sent.", "counter", totalSnapshotDeltasSent_.load());
+    appendMetric(out, "vix_arena_ws_snapshot_delta_bytes_sent_total", "Total WebSocket snapshot delta bytes sent.", "counter", totalSnapshotDeltaBytesSent_.load());
     appendMetric(out, "vix_arena_ws_rejected_messages_total", "Total rejected WebSocket messages that returned an error.", "counter", totalRejectedMessages_.load());
     appendMetric(out, "vix_arena_rate_limit_rejections_total", "Total input or chat messages rejected by rate limits.", "counter", totalRateLimitRejects_.load());
     appendMetric(out, "vix_arena_send_failures_total", "Total WebSocket send failures.", "counter", totalSendFailures_.load());

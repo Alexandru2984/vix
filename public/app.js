@@ -35,6 +35,7 @@
   const state = {
     ws: null,
     joined: false,
+    protocolVersion: 2,
     localId: null,
     world: { width: 2000, height: 1200, obstacles: [] },
     orbs: [],
@@ -159,7 +160,7 @@
   function sendJoin() {
     const name = nameInput.value.trim();
     if (name) localStorage.setItem("vix.name", name);
-    send({ type: "join", name });
+    send({ type: "join", name, protocolVersion: state.protocolVersion, supports: ["snapshot_delta"] });
   }
 
   const savedName = localStorage.getItem("vix.name");
@@ -170,10 +171,12 @@
 
     if (msg.type === "welcome") {
       state.localId = msg.id;
+      if (typeof msg.protocolVersion === "number") state.protocolVersion = msg.protocolVersion;
       state.world = msg.world || state.world;
       joinPanel.classList.add("hidden");
       state.joined = true;
     } else if (msg.type === "snapshot") {
+      rememberSnapshotMeta(msg);
       applySnapshot(msg.players || []);
       state.orbs = Array.isArray(msg.orbs) ? msg.orbs : state.orbs;
       state.powerups = Array.isArray(msg.powerups) ? msg.powerups : state.powerups;
@@ -181,6 +184,8 @@
       state.round = msg.round || state.round;
       applyEvents(msg.events || []);
       updateRoundHud();
+    } else if (msg.type === "snapshot_delta") {
+      applySnapshotDelta(msg);
     } else if (msg.type === "chat") {
       appendChat(msg.from || "server", msg.message || "");
     } else if (msg.type === "chat_history") {
@@ -209,7 +214,43 @@
     }
   }
 
-  function applySnapshot(players) {
+  function rememberSnapshotMeta(msg) {
+    if (typeof msg.snapshotId === "number") state.lastSnapshotId = msg.snapshotId;
+    if (typeof msg.tick === "number") state.lastServerTick = msg.tick;
+    if (typeof msg.serverTimeMs === "number") state.lastServerTimeMs = msg.serverTimeMs;
+  }
+
+  function mergeById(current, upserts, removedIds) {
+    const byId = new Map();
+    for (const item of current || []) {
+      if (item && typeof item.id === "string") byId.set(item.id, item);
+    }
+    for (const id of removedIds || []) {
+      byId.delete(id);
+    }
+    for (const item of upserts || []) {
+      if (item && typeof item.id === "string") byId.set(item.id, item);
+    }
+    return Array.from(byId.values());
+  }
+
+  function applySnapshotDelta(msg) {
+    if (typeof msg.baseSnapshotId === "number" && state.lastSnapshotId && msg.baseSnapshotId !== state.lastSnapshotId) {
+      appendSystem("Snapshot resync requested");
+      return;
+    }
+
+    rememberSnapshotMeta(msg);
+    applySnapshot(msg.players || [], msg.removedPlayers || []);
+    state.orbs = mergeById(state.orbs, msg.orbs || [], msg.removedOrbs || []);
+    state.powerups = mergeById(state.powerups, msg.powerups || [], msg.removedPowerups || []);
+    state.controlZone = msg.controlZone || state.controlZone;
+    state.round = msg.round || state.round;
+    applyEvents(msg.events || []);
+    updateRoundHud();
+  }
+
+  function applySnapshot(players, removedPlayers = null) {
     const seen = new Set();
     for (const p of players) {
       if (!p || typeof p.id !== "string") continue;
@@ -220,7 +261,7 @@
       }
     }
     for (const id of state.players.keys()) {
-      if (!seen.has(id)) {
+      if (removedPlayers ? removedPlayers.includes(id) : !seen.has(id)) {
         state.players.delete(id);
         state.renderPlayers.delete(id);
       }

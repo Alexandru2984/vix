@@ -17,6 +17,13 @@ namespace arena
     return out.str();
   }
 
+  std::int64_t unixTimeMs()
+  {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+  }
+
   std::int64_t uptimeSeconds(std::chrono::steady_clock::time_point startedAt)
   {
     return std::chrono::duration_cast<std::chrono::seconds>(

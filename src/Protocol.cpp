@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cstdint>
 
+#include "Utils.hpp"
+
 namespace arena
 {
   nlohmann::json playerToJson(const Player &player)
@@ -23,6 +25,7 @@ namespace arena
         {"color", player.color},
         {"bot", player.bot},
         {"score", player.score},
+        {"inputSeq", player.input.seq},
         {"quest", {
                       {"name", "Orb Run"},
                       {"progress", player.orbQuestProgress},
@@ -41,7 +44,11 @@ namespace arena
 
   nlohmann::json errorMessage(const std::string &message)
   {
-    return {{"type", "error"}, {"message", message}};
+    return {
+        {"type", "error"},
+        {"protocolVersion", protocolVersion},
+        {"serverTimeMs", unixTimeMs()},
+        {"message", message}};
   }
 
   nlohmann::json worldSummary(const World &world)
