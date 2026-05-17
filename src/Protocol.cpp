@@ -23,6 +23,7 @@ namespace arena
         {"x", player.x},
         {"y", player.y},
         {"color", player.color},
+        {"room", player.roomCode},
         {"bot", player.bot},
         {"score", player.score},
         {"inputSeq", player.input.seq},

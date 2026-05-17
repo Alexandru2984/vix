@@ -55,6 +55,7 @@ curl -fsS "http://${APP_HOST}:${APP_PORT}/health" | grep -q '"status":"ok"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/ready" | grep -q '"ready":true'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/state" | grep -q '"service":"vix-arena"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/stats" | grep -q '"tickRateTarget"'
+curl -fsS "http://${APP_HOST}:${APP_PORT}/api/rooms" | grep -q '"rooms"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/leaderboard" | grep -q '"entries"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/matches" | grep -q '"matches"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_up 1"

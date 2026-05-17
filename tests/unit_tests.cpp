@@ -281,6 +281,37 @@ namespace
     require(metrics.find("vix_arena_ws_protocol_violations_total") != std::string::npos, "metrics should expose protocol violations");
   }
 
+  void gameServerIsolatesRooms()
+  {
+    arena::GameServer server;
+    CapturedClient alpha;
+    CapturedClient bravo;
+    require(server.onOpen(alpha.connection), "alpha client should open");
+    require(server.onOpen(bravo.connection), "bravo client should open");
+
+    server.onMessage(alpha.connection.get(), R"({"type":"join","name":"Alice","room":"alpha-room","protocolVersion":2})");
+    server.onMessage(bravo.connection.get(), R"({"type":"join","name":"Bob","room":"bravo-room","protocolVersion":2})");
+
+    const auto *alphaWelcome = alpha.firstType("welcome");
+    const auto *bravoWelcome = bravo.firstType("welcome");
+    require(alphaWelcome != nullptr && alphaWelcome->value("room", "") == "alpha-room", "alpha welcome should include room");
+    require(bravoWelcome != nullptr && bravoWelcome->value("room", "") == "bravo-room", "bravo welcome should include room");
+
+    const auto *bravoSnapshot = bravo.firstType("snapshot");
+    require(bravoSnapshot != nullptr, "bravo should receive snapshot");
+    for (const auto &player : bravoSnapshot->at("players"))
+    {
+      require(player.value("name", "") != "Alice", "bravo room should not see alpha player");
+    }
+
+    const std::size_t beforeBravoMessages = bravo.messages.size();
+    server.onMessage(alpha.connection.get(), R"({"type":"chat","message":"alpha only"})");
+    require(bravo.messages.size() == beforeBravoMessages, "chat should stay inside source room");
+
+    const auto rooms = server.roomsJson();
+    require(rooms.at("rooms").size() >= 2, "rooms endpoint should expose active rooms");
+  }
+
   void gameServerNegotiatesSnapshotDeltas()
   {
     arena::GameServer server;
@@ -348,6 +379,7 @@ int main()
     run("game server join, chat, and rate limit flow", gameServerJoinChatAndRateLimitFlow);
     run("game server exposes stats and metrics", gameServerExposesStatsAndMetrics);
     run("game server limits connection and protocol abuse", gameServerLimitsConnectionAndProtocolAbuse);
+    run("game server isolates rooms", gameServerIsolatesRooms);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
   }

@@ -139,7 +139,7 @@ Cloudflare
 Nginx
   | localhost proxy
 vix-arena C++ server
-  |-- HTTP routes: /, /stats, /docs, /health, /ready, /api/state, /api/stats, /api/leaderboard, /api/matches, /metrics
+  |-- HTTP routes: /, /stats, /docs, /health, /ready, /api/state, /api/stats, /api/rooms, /api/leaderboard, /api/matches, /metrics
   |-- WebSocket route: /ws
   |-- authoritative game loop
   |-- in-memory players, bots, pickups, rounds, chat history
@@ -155,6 +155,7 @@ Client messages:
 
 ```json
 {"type":"join","name":"Micu","protocolVersion":2,"supports":["snapshot_delta"]}
+{"type":"join","name":"Micu","room":"duel-room","protocolVersion":2,"supports":["snapshot_delta"]}
 {"type":"input","up":true,"down":false,"left":false,"right":true,"seq":123}
 {"type":"ability","ability":"dash"}
 {"type":"ability","ability":"shield"}
@@ -166,7 +167,7 @@ Client messages:
 Server messages:
 
 ```json
-{"type":"welcome","protocolVersion":2,"serverTimeMs":1779035000000,"id":"p-1","features":["snapshot_delta"],"world":{"width":2000,"height":1200,"obstacles":[]}}
+{"type":"welcome","protocolVersion":2,"serverTimeMs":1779035000000,"id":"p-1","room":"duel-room","features":["snapshot_delta"],"world":{"width":2000,"height":1200,"obstacles":[]}}
 {"type":"snapshot","protocolVersion":2,"snapshotId":1,"baseSnapshotId":null,"tick":1,"full":true,"serverTimeMs":1779035000050,"players":[],"orbs":[],"powerups":[],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[]}
 {"type":"snapshot_delta","protocolVersion":2,"snapshotId":2,"baseSnapshotId":1,"tick":2,"full":false,"serverTimeMs":1779035000100,"players":[],"removedPlayers":[],"orbs":[],"removedOrbs":[],"powerups":[],"removedPowerups":[],"events":[],"removedEvents":[]}
 {"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}
@@ -181,6 +182,7 @@ Server messages:
 - `GET /ready`: readiness status, including PostgreSQL configuration and schema version.
 - `GET /api/state`: public game state, world metadata, pickups, round, events.
 - `GET /api/stats`: operational counters.
+- `GET /api/rooms`: active room codes with human/bot/player counts.
 - `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Uses PostgreSQL when enabled.
 - `GET /api/matches`: recent persisted round results. Uses PostgreSQL when enabled.
 - `GET /metrics`: Prometheus text metrics.

@@ -11,6 +11,8 @@
   const pingEl = document.getElementById("ping");
   const joinPanel = document.getElementById("joinPanel");
   const nameInput = document.getElementById("nameInput");
+  const roomInput = document.getElementById("roomInput");
+  const copyRoomBtn = document.getElementById("copyRoomBtn");
   const joinBtn = document.getElementById("joinBtn");
   const chatLog = document.getElementById("chatLog");
   const chatInput = document.getElementById("chatInput");
@@ -37,6 +39,7 @@
     joined: false,
     protocolVersion: 2,
     localId: null,
+    room: "public",
     world: { width: 2000, height: 1200, obstacles: [] },
     orbs: [],
     powerups: [],
@@ -159,18 +162,46 @@
 
   function sendJoin() {
     const name = nameInput.value.trim();
+    const room = sanitizeRoom(roomInput?.value || roomFromLocation() || "public");
     if (name) localStorage.setItem("vix.name", name);
-    send({ type: "join", name, protocolVersion: state.protocolVersion, supports: ["snapshot_delta"] });
+    localStorage.setItem("vix.room", room);
+    state.room = room;
+    send({ type: "join", name, room, protocolVersion: state.protocolVersion, supports: ["snapshot_delta"] });
   }
 
   const savedName = localStorage.getItem("vix.name");
   if (savedName) nameInput.value = savedName.slice(0, 18);
+  const savedRoom = roomFromLocation() || localStorage.getItem("vix.room") || "public";
+  if (roomInput) roomInput.value = sanitizeRoom(savedRoom);
+
+  function sanitizeRoom(value) {
+    const clean = String(value || "public")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 24);
+    return clean.length >= 3 ? clean : "public";
+  }
+
+  function roomFromLocation() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("room") || window.location.hash.replace(/^#room=/, "");
+  }
+
+  function roomLink() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", sanitizeRoom(roomInput?.value || state.room));
+    url.hash = "";
+    return url.toString();
+  }
 
   function handleMessage(msg) {
     if (!msg || typeof msg.type !== "string") return;
 
     if (msg.type === "welcome") {
       state.localId = msg.id;
+      state.room = msg.room || state.room;
+      if (roomInput) roomInput.value = state.room;
       if (typeof msg.protocolVersion === "number") state.protocolVersion = msg.protocolVersion;
       state.world = msg.world || state.world;
       joinPanel.classList.add("hidden");
@@ -654,7 +685,7 @@
   }
 
   window.addEventListener("keydown", (event) => {
-    if (event.target === chatInput || event.target === nameInput) {
+    if (event.target === chatInput || event.target === nameInput || event.target === roomInput) {
       if (event.key === "Escape") event.target.blur();
       return;
     }
@@ -722,6 +753,11 @@
 
   nameInput.addEventListener("focus", setAppHeight);
   nameInput.addEventListener("blur", settleViewport);
+  roomInput?.addEventListener("focus", setAppHeight);
+  roomInput?.addEventListener("blur", () => {
+    roomInput.value = sanitizeRoom(roomInput.value);
+    settleViewport();
+  });
 
   joinBtn.addEventListener("click", () => {
     state.joined = true;
@@ -730,6 +766,18 @@
 
   nameInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") joinBtn.click();
+  });
+  roomInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") joinBtn.click();
+  });
+  copyRoomBtn?.addEventListener("click", async () => {
+    roomInput.value = sanitizeRoom(roomInput.value);
+    try {
+      await navigator.clipboard.writeText(roomLink());
+      appendSystem("Room link copied");
+    } catch {
+      appendSystem(roomLink());
+    }
   });
 
   dashBtn.addEventListener("click", () => castAbility("dash"));

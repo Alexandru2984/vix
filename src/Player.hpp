@@ -16,6 +16,7 @@ namespace arena
     CloseFn close;
     std::atomic<bool> open{true};
     std::string remoteAddress;
+    std::string roomCode{"public"};
   };
 
   struct PlayerInput
@@ -32,6 +33,7 @@ namespace arena
     std::string id;
     std::string name;
     std::string color;
+    std::string roomCode{"public"};
     bool bot{false};
     int score{0};
     int orbQuestProgress{0};

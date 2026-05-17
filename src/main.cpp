@@ -468,6 +468,10 @@ namespace
       {
         res = makeResponse(req_, http::status::ok, game_.statsJson().dump(), "application/json; charset=utf-8");
       }
+      else if (target == "/api/rooms")
+      {
+        res = makeResponse(req_, http::status::ok, game_.roomsJson().dump(), "application/json; charset=utf-8");
+      }
       else if (target == "/api/leaderboard")
       {
         res = makeResponse(req_, http::status::ok, game_.leaderboardJson().dump(), "application/json; charset=utf-8");

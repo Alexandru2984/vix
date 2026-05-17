@@ -41,6 +41,7 @@ namespace arena
     [[nodiscard]] nlohmann::json readyJson() const;
     [[nodiscard]] nlohmann::json stateJson() const;
     [[nodiscard]] nlohmann::json statsJson() const;
+    [[nodiscard]] nlohmann::json roomsJson() const;
     [[nodiscard]] nlohmann::json leaderboardJson() const;
     [[nodiscard]] nlohmann::json matchesJson() const;
     [[nodiscard]] std::string metricsText() const;
@@ -70,6 +71,7 @@ namespace arena
     struct GameEvent
     {
       std::uint64_t id{0};
+      std::string roomCode{"public"};
       std::string type;
       std::string text;
       std::string timestamp;
@@ -115,12 +117,14 @@ namespace arena
     void tickLoop();
     void step(double dt);
     void ensureBotsLocked(std::chrono::steady_clock::time_point now);
-    void removeBotsLocked();
+    void removeBotsLocked(const std::string &roomCode = {});
     void updateBotsLocked(std::chrono::steady_clock::time_point now);
-    [[nodiscard]] Player spawnBotLocked(std::chrono::steady_clock::time_point now);
+    [[nodiscard]] Player spawnBotLocked(std::chrono::steady_clock::time_point now, const std::string &roomCode);
     void chooseBotTargetLocked(Player &bot, std::chrono::steady_clock::time_point now);
     [[nodiscard]] std::size_t humanCountLocked() const;
     [[nodiscard]] std::size_t botCountLocked() const;
+    [[nodiscard]] std::size_t humanCountLocked(const std::string &roomCode) const;
+    [[nodiscard]] std::size_t botCountLocked(const std::string &roomCode) const;
     void ensureOrbsLocked();
     void ensurePowerupsLocked();
     void updateRoundLocked();
@@ -136,20 +140,21 @@ namespace arena
     void handlePowerupPickupsLocked();
     void handleControlZoneLocked(double dt);
     void applyDashLocked(Player &player, std::chrono::steady_clock::time_point now);
-    void addEventLocked(std::string type, std::string text);
+    void addEventLocked(std::string type, std::string text, std::string roomCode = "public");
     void cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents);
-    [[nodiscard]] nlohmann::json snapshotLocked(std::uint64_t tick, std::uint64_t snapshotId) const;
+    [[nodiscard]] nlohmann::json snapshotLocked(std::uint64_t tick, std::uint64_t snapshotId, const std::string &roomCode) const;
     [[nodiscard]] nlohmann::json snapshotDeltaLocked(const nlohmann::json &current, const nlohmann::json &previous, std::uint64_t baseSnapshotId) const;
     [[nodiscard]] nlohmann::json orbsJsonLocked() const;
     [[nodiscard]] nlohmann::json powerupsJsonLocked() const;
     [[nodiscard]] nlohmann::json controlZoneJson() const;
     [[nodiscard]] nlohmann::json roundJsonLocked() const;
-    [[nodiscard]] nlohmann::json eventsJsonLocked() const;
-    [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked() const;
+    [[nodiscard]] nlohmann::json eventsJsonLocked(const std::string &roomCode) const;
+    [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked(const std::string &roomCode = {}) const;
     [[nodiscard]] std::vector<PreparedPayload> snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const nlohmann::json &snapshot);
 
     void send(ClientConnection *session, const nlohmann::json &message);
     void broadcast(const nlohmann::json &message);
+    void broadcastRoom(const std::string &roomCode, const nlohmann::json &message);
     void broadcastTo(const std::vector<SessionPtr> &sessions, const nlohmann::json &message);
     void sendPrepared(const std::vector<PreparedPayload> &payloads, bool snapshotLike);
     void recordTickDurationLocked(std::uint64_t durationUs);
@@ -165,7 +170,7 @@ namespace arena
     std::unordered_map<ClientConnection *, ClientProtocolState> sessionProtocol_;
     std::unordered_map<ClientConnection *, SessionAbuseState> sessionAbuse_;
     std::unordered_map<std::string, std::size_t> connectionsByIp_;
-    std::deque<nlohmann::json> chatHistory_;
+    std::unordered_map<std::string, std::deque<nlohmann::json>> chatHistoryByRoom_;
     std::deque<GameEvent> eventHistory_;
     std::unordered_map<std::string, LeaderboardEntry> leaderboard_;
     std::deque<nlohmann::json> matchHistory_;
