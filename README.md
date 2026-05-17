@@ -92,13 +92,13 @@ WS_HOST=127.0.0.1
 WS_PORT=18081
 PUBLIC_URL=https://vix.micutu.com
 ALLOWED_ORIGINS=https://vix.micutu.com,http://127.0.0.1:18080,http://localhost:18080
-ALLOW_MISSING_ORIGIN=true
+ALLOW_MISSING_ORIGIN=false
 DATA_DIR=/home/micu/vix/data
 DATABASE_URL=postgresql:///vix_arena
 ```
 
 `APP_PORT` serves both HTTP and WebSocket traffic. The WebSocket endpoint is `/ws`.
-`ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are allowed by default for local CLI smoke tests and can be disabled with `ALLOW_MISSING_ORIGIN=false`.
+`ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are rejected in production with `ALLOW_MISSING_ORIGIN=false`.
 `DATA_DIR` stores the JSON fallback leaderboard and match history in `vix-arena-state.json`.
 `DATABASE_URL` enables PostgreSQL persistence for completed rounds, match participants, leaderboard reads, and match history reads. If PostgreSQL is missing or unavailable, the app logs the error and keeps serving from the JSON fallback instead of failing startup.
 
@@ -139,7 +139,7 @@ Cloudflare
 Nginx
   | localhost proxy
 vix-arena C++ server
-  |-- HTTP routes: /, /stats, /docs, /health, /api/state, /api/stats, /api/leaderboard, /api/matches, /metrics
+  |-- HTTP routes: /, /stats, /docs, /health, /ready, /api/state, /api/stats, /api/leaderboard, /api/matches, /metrics
   |-- WebSocket route: /ws
   |-- authoritative game loop
   |-- in-memory players, bots, pickups, rounds, chat history
@@ -178,6 +178,7 @@ Server messages:
 ## API
 
 - `GET /health`: service status, player counts, uptime.
+- `GET /ready`: readiness status, including PostgreSQL configuration and schema version.
 - `GET /api/state`: public game state, world metadata, pickups, round, events.
 - `GET /api/stats`: operational counters.
 - `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Uses PostgreSQL when enabled.
@@ -205,7 +206,7 @@ Current metrics include:
 - authoritative tick count and recent tick duration p50/p95/p99/max
 - accepted chat messages, pickups, quests, rounds, and control-zone points
 - persistent leaderboard and match history entry counts
-- PostgreSQL configured/enabled status, queued writes, saved matches, and failed writes
+- PostgreSQL configured/enabled status, schema version, queued writes, saved matches, and failed writes
 
 Startup and fatal startup errors are emitted as single-line JSON logs for systemd/journal ingestion.
 
@@ -240,13 +241,14 @@ psql "$DATABASE_URL" -f migrations/001_initial.sql
 psql "$DATABASE_URL" -c '\dt vix_*'
 ```
 
-The application also applies the same idempotent schema automatically on startup when `DATABASE_URL` is set.
+The application also runs pending `migrations/*.sql` files automatically on startup when `DATABASE_URL` is set. Applied versions are tracked in `schema_migrations`.
 
 ## Security Notes
 
 - The production app binds only to localhost.
 - Nginx handles the public TLS endpoint.
 - WebSocket browser Origins are checked against `ALLOWED_ORIGINS` and `PUBLIC_URL`.
+- Missing WebSocket Origin headers are rejected in production.
 - Per-client WebSocket outboxes are capped to avoid unbounded memory growth.
 - The app handles `SIGTERM`/`SIGINT` for graceful shutdown under systemd.
 - HTTP responses include baseline security headers: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`.

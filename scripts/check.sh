@@ -68,6 +68,7 @@ curl -fsSI "http://${APP_HOST}:${APP_PORT}/docs" | grep -q "200 OK"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/stats" | grep -q "200 OK"
 bad_origin_status="$(
   curl -sS -o /dev/null -w "%{http_code}" \
+    --max-time 2 \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Version: 13" \
@@ -82,6 +83,7 @@ fi
 
 missing_origin_status="$(
   curl -sS -o /dev/null -w "%{http_code}" \
+    --max-time 2 \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Version: 13" \
@@ -95,12 +97,13 @@ fi
 
 good_origin_status="$(
   curl -sS -o /dev/null -w "%{http_code}" \
+    --max-time 2 \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Version: 13" \
     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
     -H "Origin: http://${APP_HOST}:${APP_PORT}" \
-    "http://${APP_HOST}:${APP_PORT}/ws"
+    "http://${APP_HOST}:${APP_PORT}/ws" 2>/dev/null || true
 )"
 if [[ "${good_origin_status}" != "101" ]]; then
   echo "expected allowed websocket origin to return 101, got ${good_origin_status}" >&2
