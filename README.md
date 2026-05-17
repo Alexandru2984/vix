@@ -201,6 +201,7 @@ Current metrics include:
 - process health and uptime
 - current humans, bots, and total connected players
 - WebSocket messages and bytes received/sent
+- active WebSocket connections, distinct remote addresses, rejected connections, and protocol violations
 - full snapshots, delta snapshots, and snapshot bytes sent
 - rejected messages, rate-limit rejections, and send failures
 - authoritative tick count and recent tick duration p50/p95/p99/max
@@ -249,6 +250,9 @@ The application also runs pending `migrations/*.sql` files automatically on star
 - Nginx handles the public TLS endpoint.
 - WebSocket browser Origins are checked against `ALLOWED_ORIGINS` and `PUBLIC_URL`.
 - Missing WebSocket Origin headers are rejected in production.
+- WebSocket connections are capped per remote address before entering the arena.
+- WebSocket messages use a per-connection token bucket to reduce spam bursts.
+- Repeated invalid WebSocket protocol messages close the connection.
 - Per-client WebSocket outboxes are capped to avoid unbounded memory growth.
 - The app handles `SIGTERM`/`SIGINT` for graceful shutdown under systemd.
 - HTTP responses include baseline security headers: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`.

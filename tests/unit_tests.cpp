@@ -67,12 +67,17 @@ namespace
   {
     std::shared_ptr<arena::ClientConnection> connection{std::make_shared<arena::ClientConnection>()};
     std::vector<nlohmann::json> messages;
+    bool closed{false};
 
     CapturedClient()
     {
       connection->send = [this](const std::string &payload)
       {
         messages.push_back(nlohmann::json::parse(payload));
+      };
+      connection->close = [this](const std::string &)
+      {
+        closed = true;
       };
     }
 
@@ -160,7 +165,7 @@ namespace
   {
     arena::GameServer server;
     CapturedClient client;
-    server.onOpen(client.connection);
+    require(server.onOpen(client.connection), "client should open");
 
     server.onMessage(client.connection.get(), "{");
     require(client.sawType("error"), "invalid JSON should return error");
@@ -174,7 +179,7 @@ namespace
   {
     arena::GameServer server;
     CapturedClient client;
-    server.onOpen(client.connection);
+    require(server.onOpen(client.connection), "client should open");
 
     server.onMessage(client.connection.get(), R"({"type":"join","name":"  Test Pilot  ","protocolVersion":2,"supports":["snapshot_delta"]})");
     const auto *welcome = client.firstType("welcome");
@@ -214,7 +219,7 @@ namespace
   {
     arena::GameServer server;
     CapturedClient client;
-    server.onOpen(client.connection);
+    require(server.onOpen(client.connection), "client should open");
     server.onMessage(client.connection.get(), R"({"type":"join","name":"Metrics"})");
     server.onMessage(client.connection.get(), R"({"type":"chat","message":"hello metrics"})");
     server.onMessage(client.connection.get(), R"({"type":"chat","message":"rate limited"})");
@@ -233,11 +238,54 @@ namespace
     require(metrics.find("vix_arena_tick_duration_microseconds_p95") != std::string::npos, "metrics should include tick duration gauges");
   }
 
+  void gameServerLimitsConnectionAndProtocolAbuse()
+  {
+    arena::GameServer server;
+    std::vector<std::shared_ptr<arena::ClientConnection>> clients;
+    for (int i = 0; i < 16; ++i)
+    {
+      auto client = std::make_shared<arena::ClientConnection>();
+      client->remoteAddress = "198.51.100.7";
+      clients.push_back(client);
+      require(server.onOpen(client), "connection should fit per-IP cap");
+    }
+
+    auto rejected = std::make_shared<arena::ClientConnection>();
+    rejected->remoteAddress = "198.51.100.7";
+    require(!server.onOpen(rejected), "connection above per-IP cap should be rejected");
+
+    server.onClose(clients.back().get());
+    require(server.onOpen(rejected), "connection should be accepted after one closes");
+
+    CapturedClient abusive;
+    require(server.onOpen(abusive.connection), "abusive test client should open");
+    for (int i = 0; i < 5; ++i)
+    {
+      server.onMessage(abusive.connection.get(), "{");
+    }
+    require(abusive.closed, "too many invalid messages should close the session");
+
+    CapturedClient burst;
+    require(server.onOpen(burst.connection), "burst test client should open");
+    for (int i = 0; i < 45; ++i)
+    {
+      server.onMessage(burst.connection.get(), R"({"type":"ping","t":1})");
+    }
+    const auto stats = server.statsJson();
+    require(stats.at("websocket").value("rejectedConnections", 0) >= 1, "stats should count rejected connections");
+    require(stats.at("websocket").value("protocolViolations", 0) >= 5, "stats should count protocol violations");
+    require(stats.at("websocket").value("rateLimitRejects", 0) >= 1, "stats should count websocket message rate limits");
+
+    const std::string metrics = server.metricsText();
+    require(metrics.find("vix_arena_ws_rejected_connections_total") != std::string::npos, "metrics should expose connection rejects");
+    require(metrics.find("vix_arena_ws_protocol_violations_total") != std::string::npos, "metrics should expose protocol violations");
+  }
+
   void gameServerNegotiatesSnapshotDeltas()
   {
     arena::GameServer server;
     CapturedClient client;
-    server.onOpen(client.connection);
+    require(server.onOpen(client.connection), "client should open");
     server.onMessage(client.connection.get(), R"({"type":"join","name":"Delta","protocolVersion":2,"supports":["snapshot_delta"]})");
 
     server.start();
@@ -299,6 +347,7 @@ int main()
     run("game server rejects bad payloads", gameServerRejectsBadPayloads);
     run("game server join, chat, and rate limit flow", gameServerJoinChatAndRateLimitFlow);
     run("game server exposes stats and metrics", gameServerExposesStatsAndMetrics);
+    run("game server limits connection and protocol abuse", gameServerLimitsConnectionAndProtocolAbuse);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
   }

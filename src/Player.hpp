@@ -11,8 +11,11 @@ namespace arena
   struct ClientConnection : public std::enable_shared_from_this<ClientConnection>
   {
     using SendFn = std::function<void(const std::string &)>;
+    using CloseFn = std::function<void(const std::string &)>;
     SendFn send;
+    CloseFn close;
     std::atomic<bool> open{true};
+    std::string remoteAddress;
   };
 
   struct PlayerInput

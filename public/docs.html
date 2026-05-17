@@ -82,6 +82,8 @@
         <li>Display names are capped at 18 bytes and chat at 220 bytes.</li>
         <li>WebSocket payloads are capped at 4096 bytes.</li>
         <li>WebSocket upgrades must target exactly <code>/ws</code> and pass the configured Origin allowlist.</li>
+        <li>WebSocket connections are capped per remote address and messages are throttled with a per-connection token bucket.</li>
+        <li>Repeated invalid protocol messages close the connection.</li>
         <li>Input is throttled server-side and the arena caps active joined players.</li>
         <li>Movement, abilities, cooldowns, speed boosts, orb pickup scoring, mini quest progress, round state, and control-zone scoring are server-authoritative.</li>
         <li>Chat is throttled per connection and the last 50 messages are kept in memory.</li>

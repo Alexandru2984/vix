@@ -33,7 +33,7 @@ namespace arena
     void start();
     void stop();
 
-    void onOpen(const std::shared_ptr<ClientConnection> &session);
+    [[nodiscard]] bool onOpen(const std::shared_ptr<ClientConnection> &session);
     void onClose(ClientConnection *session);
     void onMessage(ClientConnection *session, const std::string &payload);
 
@@ -93,6 +93,13 @@ namespace arena
       std::string lastPlayedAt;
     };
 
+    struct SessionAbuseState
+    {
+      double messageTokens{0.0};
+      std::chrono::steady_clock::time_point lastRefill;
+      std::uint32_t invalidMessages{0};
+    };
+
     using SessionPtr = std::shared_ptr<ClientConnection>;
     using PreparedPayload = std::pair<SessionPtr, std::string>;
 
@@ -101,6 +108,9 @@ namespace arena
     void handleChat(ClientConnection *session, const nlohmann::json &message);
     void handlePing(ClientConnection *session, const nlohmann::json &message);
     void handleAbility(ClientConnection *session, const nlohmann::json &message);
+    [[nodiscard]] bool consumeMessageToken(ClientConnection *session);
+    [[nodiscard]] bool recordInvalidMessage(ClientConnection *session);
+    void closeSession(ClientConnection *session, const std::string &reason);
 
     void tickLoop();
     void step(double dt);
@@ -153,6 +163,8 @@ namespace arena
     std::unordered_map<std::string, Player> players_;
     std::unordered_map<ClientConnection *, std::string> sessionToPlayer_;
     std::unordered_map<ClientConnection *, ClientProtocolState> sessionProtocol_;
+    std::unordered_map<ClientConnection *, SessionAbuseState> sessionAbuse_;
+    std::unordered_map<std::string, std::size_t> connectionsByIp_;
     std::deque<nlohmann::json> chatHistory_;
     std::deque<GameEvent> eventHistory_;
     std::unordered_map<std::string, LeaderboardEntry> leaderboard_;
@@ -194,6 +206,10 @@ namespace arena
 
     static constexpr int tickRateTarget_{20};
     static constexpr std::size_t maxPlayers_{64};
+    static constexpr std::size_t maxConnectionsPerIp_{16};
+    static constexpr double wsMessageBurst_{36.0};
+    static constexpr double wsMessageRefillPerSecond_{14.0};
+    static constexpr std::uint32_t maxInvalidMessagesPerConnection_{5};
     static constexpr std::size_t targetPlayersWithBots_{4};
     static constexpr std::size_t maxBots_{3};
     static constexpr int orbQuestGoal_{3};
@@ -231,5 +247,7 @@ namespace arena
     std::atomic<std::uint64_t> totalRejectedMessages_{0};
     std::atomic<std::uint64_t> totalRateLimitRejects_{0};
     std::atomic<std::uint64_t> totalSendFailures_{0};
+    std::atomic<std::uint64_t> totalRejectedConnections_{0};
+    std::atomic<std::uint64_t> totalProtocolViolations_{0};
   };
 }

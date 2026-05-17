@@ -240,6 +240,12 @@ namespace
           game_(game),
           client_(std::make_shared<arena::ClientConnection>())
     {
+      beast::error_code ec;
+      const auto endpoint = ws_.next_layer().remote_endpoint(ec);
+      if (!ec)
+      {
+        client_->remoteAddress = endpoint.address().to_string();
+      }
     }
 
     ~WebSocketSession()
@@ -262,6 +268,11 @@ namespace
         if (auto s = weak.lock())
           s->send(message);
       };
+      client_->close = [weak = weak_from_this()](const std::string &reason)
+      {
+        if (auto s = weak.lock())
+          s->close(reason);
+      };
 
       ws_.async_accept(req, [self](beast::error_code ec)
                        { self->onAccept(ec); });
@@ -272,7 +283,11 @@ namespace
     {
       if (ec)
         return;
-      game_.onOpen(client_);
+      if (!game_.onOpen(client_))
+      {
+        close("connection limit");
+        return;
+      }
       read();
     }
 
@@ -344,6 +359,19 @@ namespace
       bool expected = true;
       if (client_->open.compare_exchange_strong(expected, false))
         game_.onClose(client_.get());
+    }
+
+    void close(const std::string &reason)
+    {
+      auto self = shared_from_this();
+      asio::post(ws_.get_executor(), [self, reason]
+                 {
+                   self->closeClient();
+                   beast::error_code ec;
+                   websocket::close_reason closeReason(websocket::close_code::policy_error);
+                   closeReason.reason = reason.size() > 120 ? reason.substr(0, 120) : reason;
+                   self->ws_.close(closeReason, ec);
+                 });
     }
 
     websocket::stream<tcp::socket> ws_;

@@ -191,10 +191,26 @@ namespace arena
     }
   }
 
-  void GameServer::onOpen(const std::shared_ptr<ClientConnection> &)
+  bool GameServer::onOpen(const std::shared_ptr<ClientConnection> &session)
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    const std::string ip = session ? session->remoteAddress : "";
+    if (!ip.empty() && connectionsByIp_[ip] >= maxConnectionsPerIp_)
+    {
+      ++totalRejectedConnections_;
+      return false;
+    }
+
+    if (!ip.empty())
+    {
+      ++connectionsByIp_[ip];
+    }
+    SessionAbuseState abuse;
+    abuse.messageTokens = wsMessageBurst_;
+    abuse.lastRefill = std::chrono::steady_clock::now();
+    sessionAbuse_[session.get()] = abuse;
     ++totalConnections_;
+    return true;
   }
 
   void GameServer::onClose(ClientConnection *session)
@@ -205,7 +221,31 @@ namespace arena
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = sessionToPlayer_.find(session);
-      if (it != sessionToPlayer_.end())
+      auto abuseIt = sessionAbuse_.find(session);
+      if (abuseIt != sessionAbuse_.end())
+      {
+        sessionAbuse_.erase(abuseIt);
+      }
+      if (session && !session->remoteAddress.empty())
+      {
+        auto ipIt = connectionsByIp_.find(session->remoteAddress);
+        if (ipIt != connectionsByIp_.end())
+        {
+          if (ipIt->second > 1)
+          {
+            --ipIt->second;
+          }
+          else
+          {
+            connectionsByIp_.erase(ipIt);
+          }
+        }
+      }
+      if (it == sessionToPlayer_.end())
+      {
+        return;
+      }
+      else
       {
         const std::string id = it->second;
         sessionToPlayer_.erase(it);
@@ -231,9 +271,19 @@ namespace arena
     ++totalMessagesReceived_;
     totalMessageBytesReceived_ += payload.size();
 
+    if (!consumeMessageToken(session))
+    {
+      send(session, errorMessage("message rate limit"));
+      return;
+    }
+
     if (payload.size() > maxWsPayloadBytes)
     {
       send(session, errorMessage("message too large"));
+      if (recordInvalidMessage(session))
+      {
+        closeSession(session, "too many invalid messages");
+      }
       return;
     }
 
@@ -241,12 +291,20 @@ namespace arena
     if (message.is_discarded() || !message.is_object())
     {
       send(session, errorMessage("invalid JSON object"));
+      if (recordInvalidMessage(session))
+      {
+        closeSession(session, "too many invalid messages");
+      }
       return;
     }
 
     if (!message.contains("type") || !message["type"].is_string())
     {
       send(session, errorMessage("missing message type"));
+      if (recordInvalidMessage(session))
+      {
+        closeSession(session, "too many invalid messages");
+      }
       return;
     }
 
@@ -274,6 +332,55 @@ namespace arena
     else
     {
       send(session, errorMessage("unknown message type"));
+      if (recordInvalidMessage(session))
+      {
+        closeSession(session, "too many invalid messages");
+      }
+    }
+  }
+
+  bool GameServer::consumeMessageToken(ClientConnection *session)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessionAbuse_.find(session);
+    if (it == sessionAbuse_.end())
+    {
+      return true;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    SessionAbuseState &abuse = it->second;
+    const std::chrono::duration<double> elapsed = now - abuse.lastRefill;
+    abuse.lastRefill = now;
+    abuse.messageTokens = std::min(wsMessageBurst_, abuse.messageTokens + elapsed.count() * wsMessageRefillPerSecond_);
+    if (abuse.messageTokens < 1.0)
+    {
+      ++totalRateLimitRejects_;
+      return false;
+    }
+
+    abuse.messageTokens -= 1.0;
+    return true;
+  }
+
+  bool GameServer::recordInvalidMessage(ClientConnection *session)
+  {
+    ++totalProtocolViolations_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessionAbuse_.find(session);
+    if (it == sessionAbuse_.end())
+    {
+      return false;
+    }
+    ++it->second.invalidMessages;
+    return it->second.invalidMessages >= maxInvalidMessagesPerConnection_;
+  }
+
+  void GameServer::closeSession(ClientConnection *session, const std::string &reason)
+  {
+    if (session && session->close)
+    {
+      session->close(reason);
     }
   }
 
@@ -1941,6 +2048,11 @@ namespace arena
                                {"max", maxTickDurationUs_},
                            }},
         {"websocket", {
+                          {"activeConnections", sessionAbuse_.size()},
+                          {"activeRemoteAddresses", connectionsByIp_.size()},
+                          {"maxConnectionsPerIp", maxConnectionsPerIp_},
+                          {"messageBurst", wsMessageBurst_},
+                          {"messageRefillPerSecond", wsMessageRefillPerSecond_},
                           {"messagesReceived", totalMessagesReceived_.load()},
                           {"messageBytesReceived", totalMessageBytesReceived_.load()},
                           {"messagesSent", totalMessagesSent_.load()},
@@ -1951,6 +2063,8 @@ namespace arena
                           {"snapshotDeltaBytesSent", totalSnapshotDeltaBytesSent_.load()},
                           {"rejectedMessages", totalRejectedMessages_.load()},
                           {"rateLimitRejects", totalRateLimitRejects_.load()},
+                          {"rejectedConnections", totalRejectedConnections_.load()},
+                          {"protocolViolations", totalProtocolViolations_.load()},
                           {"sendFailures", totalSendFailures_.load()},
                       }}};
   }
@@ -2009,6 +2123,8 @@ namespace arena
     std::uint64_t totalControlPoints = 0;
     std::size_t leaderboardEntries = 0;
     std::size_t matchHistorySize = 0;
+    std::size_t activeWsConnections = 0;
+    std::size_t activeRemoteAddresses = 0;
     PersistenceStatus persistenceStatus = persistence_ ? persistence_->status() : PersistenceStatus{};
 
     {
@@ -2028,6 +2144,8 @@ namespace arena
       totalControlPoints = totalControlZonePoints_;
       leaderboardEntries = leaderboard_.size();
       matchHistorySize = matchHistory_.size();
+      activeWsConnections = sessionAbuse_.size();
+      activeRemoteAddresses = connectionsByIp_.size();
       tickSamples.assign(recentTickDurationsUs_.begin(), recentTickDurationsUs_.end());
     }
 
@@ -2038,6 +2156,9 @@ namespace arena
     appendMetric(out, "vix_arena_players_human", "Current connected human players.", "gauge", static_cast<std::uint64_t>(humanPlayers));
     appendMetric(out, "vix_arena_players_bot", "Current connected bot players.", "gauge", static_cast<std::uint64_t>(botPlayers));
     appendMetric(out, "vix_arena_connections_total", "Total WebSocket connections opened.", "counter", totalConnections);
+    appendMetric(out, "vix_arena_ws_active_connections", "Current accepted WebSocket connections.", "gauge", static_cast<std::uint64_t>(activeWsConnections));
+    appendMetric(out, "vix_arena_ws_active_remote_addresses", "Current distinct remote addresses with accepted WebSocket connections.", "gauge", static_cast<std::uint64_t>(activeRemoteAddresses));
+    appendMetric(out, "vix_arena_ws_rejected_connections_total", "Total WebSocket connections rejected before entering the arena.", "counter", totalRejectedConnections_.load());
     appendMetric(out, "vix_arena_ws_messages_received_total", "Total WebSocket messages received.", "counter", totalMessagesReceived_.load());
     appendMetric(out, "vix_arena_ws_message_bytes_received_total", "Total WebSocket message bytes received.", "counter", totalMessageBytesReceived_.load());
     appendMetric(out, "vix_arena_ws_messages_sent_total", "Total WebSocket messages sent.", "counter", totalMessagesSent_.load());
@@ -2047,6 +2168,7 @@ namespace arena
     appendMetric(out, "vix_arena_ws_snapshot_deltas_sent_total", "Total WebSocket snapshot deltas sent.", "counter", totalSnapshotDeltasSent_.load());
     appendMetric(out, "vix_arena_ws_snapshot_delta_bytes_sent_total", "Total WebSocket snapshot delta bytes sent.", "counter", totalSnapshotDeltaBytesSent_.load());
     appendMetric(out, "vix_arena_ws_rejected_messages_total", "Total rejected WebSocket messages that returned an error.", "counter", totalRejectedMessages_.load());
+    appendMetric(out, "vix_arena_ws_protocol_violations_total", "Total invalid WebSocket protocol messages.", "counter", totalProtocolViolations_.load());
     appendMetric(out, "vix_arena_rate_limit_rejections_total", "Total input or chat messages rejected by rate limits.", "counter", totalRateLimitRejects_.load());
     appendMetric(out, "vix_arena_send_failures_total", "Total WebSocket send failures.", "counter", totalSendFailures_.load());
     appendMetric(out, "vix_arena_ticks_total", "Total authoritative game loop ticks.", "counter", totalTicks);

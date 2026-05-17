@@ -60,6 +60,8 @@ curl -fsS "http://${APP_HOST}:${APP_PORT}/api/matches" | grep -q '"matches"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_up 1"
 curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_leaderboard_entries"
 curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_postgres_enabled"
+curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_ws_rejected_connections_total"
+curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_ws_protocol_violations_total"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -q "200 OK"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "x-content-type-options: nosniff"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "content-security-policy:"
