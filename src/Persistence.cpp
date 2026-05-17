@@ -1,6 +1,7 @@
 #include "Persistence.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <map>

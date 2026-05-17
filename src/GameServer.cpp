@@ -143,7 +143,7 @@ namespace arena
 
   }
 
-  GameServer::GameServer(std::filesystem::path dataDir, std::string databaseUrl)
+  GameServer::GameServer(std::filesystem::path dataDir, std::string databaseUrl, std::filesystem::path migrationsDir)
       : rng_(std::random_device{}()),
         dataDir_(std::move(dataDir)),
         startedAt_(std::chrono::steady_clock::now()),
@@ -152,7 +152,7 @@ namespace arena
   {
     if (!databaseUrl.empty())
     {
-      persistence_ = std::make_unique<PersistenceStore>(std::move(databaseUrl), matchHistoryLimit_);
+      persistence_ = std::make_unique<PersistenceStore>(std::move(databaseUrl), std::move(migrationsDir), matchHistoryLimit_);
     }
     if (!dataDir_.empty())
     {
@@ -1862,6 +1862,24 @@ namespace arena
         {"uptimeSeconds", uptimeSeconds(startedAt_)}};
   }
 
+  nlohmann::json GameServer::readyJson() const
+  {
+    const PersistenceStatus persistenceStatus = persistence_ ? persistence_->status() : PersistenceStatus{};
+    const bool persistenceReady = !persistenceStatus.configured || persistenceStatus.enabled;
+    return {
+        {"status", persistenceReady ? "ok" : "degraded"},
+        {"service", "vix-arena"},
+        {"ready", persistenceReady},
+        {"persistence", {
+                            {"postgresConfigured", persistenceStatus.configured},
+                            {"postgresEnabled", persistenceStatus.enabled},
+                            {"postgresSchemaVersion", persistenceStatus.schemaVersion},
+                            {"postgresQueuedWrites", persistenceStatus.queuedWrites},
+                            {"postgresFailedWrites", persistenceStatus.failedWrites},
+                            {"postgresLastError", persistenceStatus.lastError.empty() ? "" : "see service logs"},
+                        }}};
+  }
+
   nlohmann::json GameServer::stateJson() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -1910,6 +1928,7 @@ namespace arena
                             {"postgresQueuedWrites", persistenceStatus.queuedWrites},
                             {"postgresSavedMatches", persistenceStatus.savedMatches},
                             {"postgresFailedWrites", persistenceStatus.failedWrites},
+                            {"postgresSchemaVersion", persistenceStatus.schemaVersion},
                             {"postgresLastError", persistenceStatus.lastError.empty() ? "" : "see service logs"},
                             {"leaderboardEntries", leaderboard_.size()},
                             {"matchHistorySize", matchHistory_.size()},
@@ -2048,6 +2067,7 @@ namespace arena
     appendMetric(out, "vix_arena_postgres_queued_writes", "Queued PostgreSQL match writes.", "gauge", persistenceStatus.queuedWrites);
     appendMetric(out, "vix_arena_postgres_saved_matches_total", "Matches saved to PostgreSQL.", "counter", persistenceStatus.savedMatches);
     appendMetric(out, "vix_arena_postgres_failed_writes_total", "Failed PostgreSQL writes.", "counter", persistenceStatus.failedWrites);
+    appendMetric(out, "vix_arena_postgres_schema_version", "Current PostgreSQL schema migration version.", "gauge", persistenceStatus.schemaVersion);
 
     return out.str();
   }

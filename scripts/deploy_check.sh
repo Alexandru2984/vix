@@ -18,6 +18,10 @@ echo "local health:"
 curl -fsS "http://${APP_HOST}:${APP_PORT}/health"
 echo
 
+echo "local readiness:"
+curl -fsS "http://${APP_HOST}:${APP_PORT}/ready"
+echo
+
 echo "local html:"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | sed -n '1,8p'
 if ! curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "x-content-type-options: nosniff"; then

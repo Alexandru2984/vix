@@ -176,6 +176,14 @@ namespace
            target.find('%') == std::string_view::npos;
   }
 
+  std::string pathOnly(std::string_view target)
+  {
+    const auto queryPos = target.find('?');
+    if (queryPos == std::string_view::npos)
+      return std::string(target);
+    return std::string(target.substr(0, queryPos));
+  }
+
   template <class Body, class Allocator>
   http::response<http::string_body> makeResponse(
       const http::request<Body, http::basic_fields<Allocator>> &req,
@@ -375,7 +383,8 @@ namespace
       if (ec)
         return;
 
-      if (websocket::is_upgrade(req_) && req_.target().starts_with("/ws"))
+      const std::string targetPath = pathOnly(req_.target());
+      if (websocket::is_upgrade(req_) && targetPath == "/ws")
       {
         if (!originAllowed(req_, config_))
         {
@@ -398,6 +407,15 @@ namespace
     {
       http::response<http::string_body> res;
       std::string target(req_.target());
+      if (target.size() > 2048)
+      {
+        res = makeResponse(req_, http::status::uri_too_long, "uri too long", "text/plain; charset=utf-8");
+        auto self = shared_from_this();
+        auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
+        http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
+                          { self->onWrite(ec, sp->need_eof()); });
+        return;
+      }
       if (const auto queryPos = target.find('?'); queryPos != std::string::npos)
         target.resize(queryPos);
 
@@ -408,6 +426,11 @@ namespace
       else if (target == "/health")
       {
         res = makeResponse(req_, http::status::ok, game_.healthJson().dump(), "application/json; charset=utf-8");
+      }
+      else if (target == "/ready")
+      {
+        const nlohmann::json ready = game_.readyJson();
+        res = makeResponse(req_, ready.value("ready", false) ? http::status::ok : http::status::service_unavailable, ready.dump(), "application/json; charset=utf-8");
       }
       else if (target == "/api/state")
       {
@@ -565,7 +588,7 @@ int main()
   const std::string databaseUrl = envString(fileEnv, "DATABASE_URL", "");
   const std::filesystem::path dataDir = envString(fileEnv, "DATA_DIR", (root / "data").string());
   AppConfig config;
-  config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", true);
+  config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", publicUrl.empty());
   config.allowedOrigins = parseOriginList(envString(fileEnv, "ALLOWED_ORIGINS", ""));
   if (const std::string publicOrigin = originFromUrl(publicUrl); !publicOrigin.empty())
     config.allowedOrigins.insert(publicOrigin);
@@ -574,7 +597,7 @@ int main()
 
   try
   {
-    arena::GameServer game(dataDir, databaseUrl);
+    arena::GameServer game(dataDir, databaseUrl, root / "migrations");
     game.start();
 
     asio::io_context ioc{static_cast<int>(std::max(2u, std::thread::hardware_concurrency()))};

@@ -52,6 +52,7 @@ for _ in {1..60}; do
 done
 
 curl -fsS "http://${APP_HOST}:${APP_PORT}/health" | grep -q '"status":"ok"'
+curl -fsS "http://${APP_HOST}:${APP_PORT}/ready" | grep -q '"ready":true'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/state" | grep -q '"service":"vix-arena"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/stats" | grep -q '"tickRateTarget"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/leaderboard" | grep -q '"entries"'
@@ -76,6 +77,33 @@ bad_origin_status="$(
 )"
 if [[ "${bad_origin_status}" != "403" ]]; then
   echo "expected bad websocket origin to return 403, got ${bad_origin_status}" >&2
+  exit 1
+fi
+
+missing_origin_status="$(
+  curl -sS -o /dev/null -w "%{http_code}" \
+    -H "Connection: Upgrade" \
+    -H "Upgrade: websocket" \
+    -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    "http://${APP_HOST}:${APP_PORT}/ws"
+)"
+if [[ "${ALLOW_MISSING_ORIGIN:-false}" == "false" && "${missing_origin_status}" != "403" ]]; then
+  echo "expected missing websocket origin to return 403, got ${missing_origin_status}" >&2
+  exit 1
+fi
+
+good_origin_status="$(
+  curl -sS -o /dev/null -w "%{http_code}" \
+    -H "Connection: Upgrade" \
+    -H "Upgrade: websocket" \
+    -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    -H "Origin: http://${APP_HOST}:${APP_PORT}" \
+    "http://${APP_HOST}:${APP_PORT}/ws"
+)"
+if [[ "${good_origin_status}" != "101" ]]; then
+  echo "expected allowed websocket origin to return 101, got ${good_origin_status}" >&2
   exit 1
 fi
 

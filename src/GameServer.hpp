@@ -24,7 +24,7 @@ namespace arena
   class GameServer
   {
   public:
-    explicit GameServer(std::filesystem::path dataDir = {}, std::string databaseUrl = {});
+    explicit GameServer(std::filesystem::path dataDir = {}, std::string databaseUrl = {}, std::filesystem::path migrationsDir = {});
     ~GameServer();
 
     GameServer(const GameServer &) = delete;
@@ -38,6 +38,7 @@ namespace arena
     void onMessage(ClientConnection *session, const std::string &payload);
 
     [[nodiscard]] nlohmann::json healthJson() const;
+    [[nodiscard]] nlohmann::json readyJson() const;
     [[nodiscard]] nlohmann::json stateJson() const;
     [[nodiscard]] nlohmann::json statsJson() const;
     [[nodiscard]] nlohmann::json leaderboardJson() const;
