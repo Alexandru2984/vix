@@ -173,9 +173,7 @@ namespace arena
   GameServer::GameServer(std::filesystem::path dataDir, std::string databaseUrl, std::filesystem::path migrationsDir)
       : rng_(std::random_device{}()),
         dataDir_(std::move(dataDir)),
-        startedAt_(std::chrono::steady_clock::now()),
-        roundStartedAt_(startedAt_),
-        intermissionUntil_(startedAt_)
+        startedAt_(std::chrono::steady_clock::now())
   {
     if (!databaseUrl.empty())
     {
@@ -186,8 +184,9 @@ namespace arena
       stateFile_ = dataDir_ / "vix-arena-state.json";
       loadPersistentStateLocked();
     }
-    ensureOrbsLocked();
-    ensurePowerupsLocked();
+    RoomState &publicRoom = roomStateLocked("public");
+    ensureOrbsLocked(publicRoom);
+    ensurePowerupsLocked(publicRoom);
   }
 
   GameServer::~GameServer()
@@ -829,12 +828,56 @@ namespace arena
     }
   }
 
+  GameServer::RoomState &GameServer::roomStateLocked(const std::string &roomCode)
+  {
+    RoomState &room = rooms_[roomCode.empty() ? "public" : roomCode];
+    if (room.roundStartedAt == std::chrono::steady_clock::time_point{})
+    {
+      const auto now = std::chrono::steady_clock::now();
+      room.roundStartedAt = now;
+      room.intermissionUntil = now;
+      ensureOrbsLocked(room);
+      ensurePowerupsLocked(room);
+    }
+    return room;
+  }
+
+  const GameServer::RoomState *GameServer::roomStateLocked(const std::string &roomCode) const
+  {
+    auto it = rooms_.find(roomCode.empty() ? "public" : roomCode);
+    return it == rooms_.end() ? nullptr : &it->second;
+  }
+
+  std::vector<std::string> GameServer::activeRoomCodesLocked() const
+  {
+    std::vector<std::string> rooms;
+    std::unordered_map<std::string, bool> seen;
+    for (const auto &[_, player] : players_)
+    {
+      if (!seen.contains(player.roomCode))
+      {
+        seen[player.roomCode] = true;
+        rooms.push_back(player.roomCode);
+      }
+    }
+    if (rooms.empty())
+    {
+      rooms.push_back("public");
+    }
+    return rooms;
+  }
+
   void GameServer::step(double dt)
   {
-    ensureOrbsLocked();
-    ensurePowerupsLocked();
-    updateRoundLocked();
     const auto now = std::chrono::steady_clock::now();
+    for (const std::string &roomCode : activeRoomCodesLocked())
+    {
+      RoomState &room = roomStateLocked(roomCode);
+      ensureOrbsLocked(room);
+      ensurePowerupsLocked(room);
+      updateRoundLocked(room, roomCode);
+    }
+
     ensureBotsLocked(now);
     updateBotsLocked(now);
 
@@ -883,29 +926,32 @@ namespace arena
       }
     }
 
-    if (intermission_)
+    for (const std::string &roomCode : activeRoomCodesLocked())
     {
-      return;
-    }
-
-    handleOrbPickupsLocked();
-    handlePowerupPickupsLocked();
-    handleControlZoneLocked(dt);
-  }
-
-  void GameServer::ensureOrbsLocked()
-  {
-    while (orbs_.size() < targetOrbCount_)
-    {
-      orbs_.push_back(spawnOrbLocked());
+      RoomState &room = roomStateLocked(roomCode);
+      if (room.intermission)
+      {
+        continue;
+      }
+      handleOrbPickupsLocked(room, roomCode);
+      handlePowerupPickupsLocked(room, roomCode);
+      handleControlZoneLocked(room, roomCode, dt);
     }
   }
 
-  void GameServer::ensurePowerupsLocked()
+  void GameServer::ensureOrbsLocked(RoomState &room)
   {
-    while (powerups_.size() < targetPowerupCount_)
+    while (room.orbs.size() < targetOrbCount_)
     {
-      powerups_.push_back(spawnPowerupLocked());
+      room.orbs.push_back(spawnOrbLocked(room));
+    }
+  }
+
+  void GameServer::ensurePowerupsLocked(RoomState &room)
+  {
+    while (room.powerups.size() < targetPowerupCount_)
+    {
+      room.powerups.push_back(spawnPowerupLocked(room));
     }
   }
 
@@ -1033,20 +1079,21 @@ namespace arena
 
   void GameServer::chooseBotTargetLocked(Player &bot, std::chrono::steady_clock::time_point now)
   {
+    RoomState &room = roomStateLocked(bot.roomCode);
     std::uniform_int_distribution<int> modeDist(0, 99);
     const int mode = modeDist(rng_);
 
-    if (!orbs_.empty() && mode < 68)
+    if (!room.orbs.empty() && mode < 68)
     {
-      const auto best = std::min_element(orbs_.begin(), orbs_.end(), [&bot](const Orb &a, const Orb &b)
+      const auto best = std::min_element(room.orbs.begin(), room.orbs.end(), [&bot](const Orb &a, const Orb &b)
                                          { return distanceSq(bot.x, bot.y, a.x, a.y) < distanceSq(bot.x, bot.y, b.x, b.y); });
       bot.botTargetX = best->x;
       bot.botTargetY = best->y;
     }
-    else if (!powerups_.empty() && mode < 86)
+    else if (!room.powerups.empty() && mode < 86)
     {
-      std::uniform_int_distribution<std::size_t> dist(0, powerups_.size() - 1);
-      const auto &powerup = powerups_[dist(rng_)];
+      std::uniform_int_distribution<std::size_t> dist(0, room.powerups.size() - 1);
+      const auto &powerup = room.powerups[dist(rng_)];
       bot.botTargetX = powerup.x;
       bot.botTargetY = powerup.y;
     }
@@ -1098,9 +1145,10 @@ namespace arena
         ++bot.roundAbilitiesUsed;
         addEventLocked("dash", bot.name + " dashed", bot.roomCode);
       }
-      if (!orbs_.empty() && now >= bot.magnetReadyAt)
+      RoomState &room = roomStateLocked(bot.roomCode);
+      if (!room.orbs.empty() && now >= bot.magnetReadyAt)
       {
-        const auto nearby = std::count_if(orbs_.begin(), orbs_.end(), [&bot](const Orb &orb)
+        const auto nearby = std::count_if(room.orbs.begin(), room.orbs.end(), [&bot](const Orb &orb)
                                           { return distanceSq(bot.x, bot.y, orb.x, orb.y) < magnetRadius_ * magnetRadius_; });
         if (nearby >= 2)
         {
@@ -1113,60 +1161,69 @@ namespace arena
     }
   }
 
-  void GameServer::updateRoundLocked()
+  void GameServer::updateRoundLocked(RoomState &room, const std::string &roomCode)
   {
     const auto now = std::chrono::steady_clock::now();
-    if (intermission_)
+    if (room.intermission)
     {
-      if (now >= intermissionUntil_)
+      if (now >= room.intermissionUntil)
       {
-        startNextRoundLocked(now);
+        startNextRoundLocked(room, now, roomCode);
       }
       return;
     }
 
-    if (now - roundStartedAt_ >= std::chrono::seconds(roundDurationSeconds_))
+    if (now - room.roundStartedAt >= std::chrono::seconds(roundDurationSeconds_))
     {
-      finishRoundLocked(now);
+      finishRoundLocked(room, now, roomCode);
     }
   }
 
-  void GameServer::finishRoundLocked(std::chrono::steady_clock::time_point now)
+  void GameServer::finishRoundLocked(RoomState &room, std::chrono::steady_clock::time_point now, const std::string &roomCode)
   {
-    lastWinnerId_.clear();
-    lastWinnerName_ = "No winner";
-    lastWinnerScore_ = 0;
+    room.lastWinnerId.clear();
+    room.lastWinnerName = "No winner";
+    room.lastWinnerScore = 0;
 
     for (const auto &[_, player] : players_)
     {
-      if (lastWinnerId_.empty() || player.score > lastWinnerScore_)
+      if (player.roomCode != roomCode)
       {
-        lastWinnerId_ = player.id;
-        lastWinnerName_ = player.name;
-        lastWinnerScore_ = player.score;
+        continue;
+      }
+      if (room.lastWinnerId.empty() || player.score > room.lastWinnerScore)
+      {
+        room.lastWinnerId = player.id;
+        room.lastWinnerName = player.name;
+        room.lastWinnerScore = player.score;
       }
     }
 
-    intermission_ = true;
-    intermissionUntil_ = now + std::chrono::seconds(intermissionSeconds_);
+    room.intermission = true;
+    room.intermissionUntil = now + std::chrono::seconds(intermissionSeconds_);
+    ++room.totalRoundsCompleted;
     ++totalRoundsCompleted_;
-    recordRoundLocked();
+    recordRoundLocked(room, roomCode);
     savePersistentStateLocked();
-    addEventLocked("round_end", lastWinnerName_ + " won round " + std::to_string(roundNumber_) + " with " + std::to_string(lastWinnerScore_) + " points");
+    addEventLocked("round_end", room.lastWinnerName + " won round " + std::to_string(room.roundNumber) + " with " + std::to_string(room.lastWinnerScore) + " points", roomCode);
   }
 
-  void GameServer::startNextRoundLocked(std::chrono::steady_clock::time_point now)
+  void GameServer::startNextRoundLocked(RoomState &room, std::chrono::steady_clock::time_point now, const std::string &roomCode)
   {
-    intermission_ = false;
-    roundStartedAt_ = now;
-    ++roundNumber_;
-    orbs_.clear();
-    ensureOrbsLocked();
-    powerups_.clear();
-    ensurePowerupsLocked();
+    room.intermission = false;
+    room.roundStartedAt = now;
+    ++room.roundNumber;
+    room.orbs.clear();
+    ensureOrbsLocked(room);
+    room.powerups.clear();
+    ensurePowerupsLocked(room);
 
     for (auto &[_, player] : players_)
     {
+      if (player.roomCode != roomCode)
+      {
+        continue;
+      }
       player.score = 0;
       player.orbQuestProgress = 0;
       player.controlCarry = 0.0;
@@ -1189,7 +1246,7 @@ namespace arena
       player.facingY = 0.0;
     }
 
-    addEventLocked("round_start", "Round " + std::to_string(roundNumber_) + " started");
+    addEventLocked("round_start", "Round " + std::to_string(room.roundNumber) + " started", roomCode);
   }
 
   void GameServer::loadPersistentStateLocked()
@@ -1311,9 +1368,9 @@ namespace arena
     }
   }
 
-  void GameServer::recordRoundLocked()
+  void GameServer::recordRoundLocked(RoomState &room, const std::string &roomCode)
   {
-    if (players_.empty())
+    if (humanCountLocked(roomCode) == 0 && botCountLocked(roomCode) == 0)
     {
       return;
     }
@@ -1321,16 +1378,20 @@ namespace arena
     const std::string endedAt = isoTimestampUtc();
     std::vector<nlohmann::json> participants;
     participants.reserve(players_.size());
-    const MatchRecord dbRecord = matchRecordLocked(endedAt);
+    const MatchRecord dbRecord = matchRecordLocked(room, endedAt, roomCode);
 
     for (const auto &[_, player] : players_)
     {
+      if (player.roomCode != roomCode)
+      {
+        continue;
+      }
       participants.push_back({
           {"id", player.id},
           {"name", player.name},
           {"score", player.score},
           {"bot", player.bot},
-          {"winner", player.id == lastWinnerId_},
+          {"winner", player.id == room.lastWinnerId},
           {"orbPickups", player.roundOrbPickups},
           {"powerups", player.roundPowerups},
           {"quests", player.roundQuests},
@@ -1348,7 +1409,7 @@ namespace arena
         LeaderboardEntry &entry = leaderboard_[name];
         entry.name = name;
         ++entry.rounds;
-        if (player.id == lastWinnerId_)
+        if (player.id == room.lastWinnerId)
         {
           ++entry.wins;
         }
@@ -1368,12 +1429,13 @@ namespace arena
               });
 
     matchHistory_.push_front({
-        {"round", roundNumber_},
+        {"round", room.roundNumber},
+        {"room", roomCode},
         {"endedAt", endedAt},
         {"winner", {
-                       {"id", lastWinnerId_},
-                       {"name", lastWinnerName_},
-                       {"score", lastWinnerScore_},
+                       {"id", room.lastWinnerId},
+                       {"name", room.lastWinnerName},
+                       {"score", room.lastWinnerScore},
                    }},
         {"participants", participants},
     });
@@ -1388,19 +1450,24 @@ namespace arena
     }
   }
 
-  MatchRecord GameServer::matchRecordLocked(const std::string &endedAt) const
+  MatchRecord GameServer::matchRecordLocked(const RoomState &room, const std::string &endedAt, const std::string &roomCode) const
   {
     MatchRecord record;
-    record.round = roundNumber_;
+    record.roomCode = roomCode.empty() ? "public" : roomCode;
+    record.round = room.roundNumber;
     record.endedAt = endedAt;
-    record.winnerId = lastWinnerId_;
-    record.winnerName = lastWinnerName_;
-    record.winnerScore = lastWinnerScore_;
+    record.winnerId = room.lastWinnerId;
+    record.winnerName = room.lastWinnerName;
+    record.winnerScore = room.lastWinnerScore;
     record.durationSeconds = roundDurationSeconds_;
     record.participants.reserve(players_.size());
 
     for (const auto &[_, player] : players_)
     {
+      if (player.roomCode != roomCode)
+      {
+        continue;
+      }
       record.participants.push_back({
           player.id,
           player.name,
@@ -1411,7 +1478,7 @@ namespace arena
           player.roundQuests,
           player.roundControlZonePoints,
           player.roundAbilitiesUsed,
-          player.id == lastWinnerId_});
+          player.id == room.lastWinnerId});
     }
 
     std::sort(record.participants.begin(), record.participants.end(), [](const MatchParticipantRecord &left, const MatchParticipantRecord &right)
@@ -1481,7 +1548,7 @@ namespace arena
     return result;
   }
 
-  void GameServer::handleOrbPickupsLocked()
+  void GameServer::handleOrbPickupsLocked(RoomState &room, const std::string &roomCode)
   {
     const double pickupRadius = World::playerRadius + orbRadius_;
     const double pickupRadiusSq = pickupRadius * pickupRadius;
@@ -1490,7 +1557,11 @@ namespace arena
 
     for (auto &[_, player] : players_)
     {
-      for (auto &orb : orbs_)
+      if (player.roomCode != roomCode)
+      {
+        continue;
+      }
+      for (auto &orb : room.orbs)
       {
         const double dx = player.x - orb.x;
         const double dy = player.y - orb.y;
@@ -1520,13 +1591,13 @@ namespace arena
             ++totalQuestsCompleted_;
             addEventLocked("quest", player.name + " completed Orb Run +" + std::to_string(orbQuestReward_), player.roomCode);
           }
-          orb = spawnOrbLocked();
+          orb = spawnOrbLocked(room);
         }
       }
     }
   }
 
-  void GameServer::handlePowerupPickupsLocked()
+  void GameServer::handlePowerupPickupsLocked(RoomState &room, const std::string &roomCode)
   {
     const double pickupRadius = World::playerRadius + powerupRadius_;
     const double pickupRadiusSq = pickupRadius * pickupRadius;
@@ -1534,7 +1605,11 @@ namespace arena
 
     for (auto &[_, player] : players_)
     {
-      for (auto &powerup : powerups_)
+      if (player.roomCode != roomCode)
+      {
+        continue;
+      }
+      for (auto &powerup : room.powerups)
       {
         const double dx = player.x - powerup.x;
         const double dy = player.y - powerup.y;
@@ -1545,19 +1620,23 @@ namespace arena
           ++player.roundPowerups;
           ++totalPowerupsSinceStart_;
           addEventLocked("powerup", player.name + " grabbed speed boost", player.roomCode);
-          powerup = spawnPowerupLocked();
+          powerup = spawnPowerupLocked(room);
         }
       }
     }
   }
 
-  void GameServer::handleControlZoneLocked(double dt)
+  void GameServer::handleControlZoneLocked(RoomState &, const std::string &roomCode, double dt)
   {
     const double zoneSq = controlZoneRadius_ * controlZoneRadius_;
     std::unordered_map<std::string, std::vector<Player *>> occupantsByRoom;
 
     for (auto &[_, player] : players_)
     {
+      if (player.roomCode != roomCode)
+      {
+        continue;
+      }
       const double dx = player.x - controlZoneX_;
       const double dy = player.y - controlZoneY_;
       if (dx * dx + dy * dy > zoneSq)
@@ -1627,17 +1706,19 @@ namespace arena
 
   void GameServer::addEventLocked(std::string type, std::string text, std::string roomCode)
   {
-    eventHistory_.push_back({
-        nextEventNumber_++,
-        std::move(roomCode),
+    RoomState &room = roomStateLocked(roomCode);
+    const std::string code = roomCode.empty() ? "public" : roomCode;
+    room.eventHistory.push_back({
+        room.nextEventNumber++,
+        code,
         std::move(type),
         std::move(text),
         isoTimestampUtc(),
     });
 
-    while (eventHistory_.size() > 24)
+    while (room.eventHistory.size() > 24)
     {
-      eventHistory_.pop_front();
+      room.eventHistory.pop_front();
     }
   }
 
@@ -1688,6 +1769,9 @@ namespace arena
         players.push_back(playerToJson(player));
       }
     }
+    const RoomState *room = roomStateLocked(roomCode);
+    const RoomState emptyRoom;
+    const RoomState &roomRef = room ? *room : emptyRoom;
 
     return {
         {"type", "snapshot"},
@@ -1698,11 +1782,11 @@ namespace arena
         {"full", true},
         {"room", roomCode},
         {"players", players},
-        {"orbs", orbsJsonLocked()},
-        {"powerups", powerupsJsonLocked()},
+        {"orbs", orbsJsonLocked(roomRef)},
+        {"powerups", powerupsJsonLocked(roomRef)},
         {"controlZone", controlZoneJson()},
-        {"round", roundJsonLocked()},
-        {"events", eventsJsonLocked(roomCode)},
+        {"round", roundJsonLocked(roomRef)},
+        {"events", eventsJsonLocked(roomRef)},
         {"serverTimeMs", unixTimeMs()},
         {"serverTime", isoTimestampUtc()}};
   }
@@ -1721,6 +1805,7 @@ namespace arena
         {"baseSnapshotId", baseSnapshotId},
         {"tick", current.value("tick", 0ULL)},
         {"full", false},
+        {"room", current.value("room", "public")},
         {"serverTimeMs", current.value("serverTimeMs", unixTimeMs())},
         {"players", players.at("upserts")},
         {"removedPlayers", players.at("removed")},
@@ -1743,10 +1828,10 @@ namespace arena
     return delta;
   }
 
-  nlohmann::json GameServer::orbsJsonLocked() const
+  nlohmann::json GameServer::orbsJsonLocked(const RoomState &room) const
   {
     nlohmann::json orbs = nlohmann::json::array();
-    for (const auto &orb : orbs_)
+    for (const auto &orb : room.orbs)
     {
       orbs.push_back({
           {"id", orb.id},
@@ -1758,10 +1843,10 @@ namespace arena
     return orbs;
   }
 
-  nlohmann::json GameServer::powerupsJsonLocked() const
+  nlohmann::json GameServer::powerupsJsonLocked(const RoomState &room) const
   {
     nlohmann::json powerups = nlohmann::json::array();
-    for (const auto &powerup : powerups_)
+    for (const auto &powerup : room.powerups)
     {
       powerups.push_back({
           {"id", powerup.id},
@@ -1783,46 +1868,42 @@ namespace arena
         {"pointsPerSecond", controlPointsPerSecond_}};
   }
 
-  nlohmann::json GameServer::roundJsonLocked() const
+  nlohmann::json GameServer::roundJsonLocked(const RoomState &room) const
   {
     const auto now = std::chrono::steady_clock::now();
     int secondsRemaining = 0;
     std::string phase = "active";
 
-    if (intermission_)
+    if (room.intermission)
     {
       phase = "intermission";
       secondsRemaining = static_cast<int>(
-          std::max<std::int64_t>(0, std::chrono::duration_cast<std::chrono::seconds>(intermissionUntil_ - now).count()));
+          std::max<std::int64_t>(0, std::chrono::duration_cast<std::chrono::seconds>(room.intermissionUntil - now).count()));
     }
     else
     {
-      const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - roundStartedAt_).count();
+      const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - room.roundStartedAt).count();
       secondsRemaining = static_cast<int>(std::max<std::int64_t>(0, roundDurationSeconds_ - elapsed));
     }
 
     return {
-        {"number", roundNumber_},
+        {"number", room.roundNumber},
         {"phase", phase},
         {"secondsRemaining", secondsRemaining},
         {"durationSeconds", roundDurationSeconds_},
         {"intermissionSeconds", intermissionSeconds_},
         {"lastWinner", {
-                           {"id", lastWinnerId_},
-                           {"name", lastWinnerName_},
-                           {"score", lastWinnerScore_},
+                           {"id", room.lastWinnerId},
+                           {"name", room.lastWinnerName},
+                           {"score", room.lastWinnerScore},
                        }}};
   }
 
-  nlohmann::json GameServer::eventsJsonLocked(const std::string &roomCode) const
+  nlohmann::json GameServer::eventsJsonLocked(const RoomState &room) const
   {
     nlohmann::json events = nlohmann::json::array();
-    for (const auto &event : eventHistory_)
+    for (const auto &event : room.eventHistory)
     {
-      if (event.roomCode != roomCode)
-      {
-        continue;
-      }
       events.push_back({
           {"id", event.id},
           {"room", event.roomCode},
@@ -2022,7 +2103,7 @@ namespace arena
     return palette[dist(rng_)];
   }
 
-  GameServer::Orb GameServer::spawnOrbLocked()
+  GameServer::Orb GameServer::spawnOrbLocked(RoomState &room)
   {
     static const std::vector<std::string> colors = {
         "#66ccff", "#ffcc66", "#7af59b", "#ff7aa8", "#f5f06b"};
@@ -2033,7 +2114,7 @@ namespace arena
     std::uniform_int_distribution<std::size_t> colorDist(0, colors.size() - 1);
 
     Orb orb;
-    orb.id = "o-" + std::to_string(nextOrbNumber_++);
+    orb.id = "o-" + std::to_string(room.nextOrbNumber++);
     orb.value = valueDist(rng_) == 0 ? 15 : 5;
     orb.color = orb.value > 5 ? "#f5f06b" : colors[colorDist(rng_)];
 
@@ -2054,13 +2135,13 @@ namespace arena
     return orb;
   }
 
-  GameServer::Powerup GameServer::spawnPowerupLocked()
+  GameServer::Powerup GameServer::spawnPowerupLocked(RoomState &room)
   {
     std::uniform_real_distribution<double> xdist(60.0, world_.width() - 60.0);
     std::uniform_real_distribution<double> ydist(60.0, world_.height() - 60.0);
 
     Powerup powerup;
-    powerup.id = "u-" + std::to_string(nextPowerupNumber_++);
+    powerup.id = "u-" + std::to_string(room.nextPowerupNumber++);
 
     for (int attempt = 0; attempt < 120; ++attempt)
     {
@@ -2112,17 +2193,20 @@ namespace arena
   nlohmann::json GameServer::stateJson() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    const RoomState *publicRoom = roomStateLocked("public");
+    const RoomState emptyRoom;
+    const RoomState &roomRef = publicRoom ? *publicRoom : emptyRoom;
     return {
         {"service", "vix-arena"},
         {"players", players_.size()},
         {"humans", humanCountLocked()},
         {"bots", botCountLocked()},
         {"world", worldSummary(world_)},
-        {"orbs", orbsJsonLocked()},
-        {"powerups", powerupsJsonLocked()},
+        {"orbs", orbsJsonLocked(roomRef)},
+        {"powerups", powerupsJsonLocked(roomRef)},
         {"controlZone", controlZoneJson()},
-        {"round", roundJsonLocked()},
-        {"events", eventsJsonLocked("public")}};
+        {"round", roundJsonLocked(roomRef)},
+        {"events", eventsJsonLocked(roomRef)}};
   }
 
   nlohmann::json GameServer::statsJson() const
@@ -2132,6 +2216,8 @@ namespace arena
     const PersistenceStatus persistenceStatus = persistence_ ? persistence_->status() : PersistenceStatus{};
     std::lock_guard<std::mutex> lock(mutex_);
     tickSamples.assign(recentTickDurationsUs_.begin(), recentTickDurationsUs_.end());
+    const RoomState *publicRoom = roomStateLocked("public");
+    const std::uint64_t publicRoundNumber = publicRoom ? publicRoom->roundNumber : 1;
     return {
         {"service", "vix-arena"},
         {"connectedPlayers", players_.size()},
@@ -2147,7 +2233,7 @@ namespace arena
         {"totalControlZonePointsSinceStart", totalControlZonePoints_},
         {"totalPowerupsSinceStart", totalPowerupsSinceStart_},
         {"totalQuestsCompletedSinceStart", totalQuestsCompleted_},
-        {"roundNumber", roundNumber_},
+        {"roundNumber", publicRoundNumber},
         {"totalRoundsCompletedSinceStart", totalRoundsCompleted_},
         {"persistence", {
                             {"enabled", !stateFile_.empty() || persistenceStatus.enabled},

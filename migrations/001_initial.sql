@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 CREATE TABLE IF NOT EXISTS vix_matches (
   id BIGSERIAL PRIMARY KEY,
+  room_code TEXT NOT NULL DEFAULT 'public',
   round_number BIGINT NOT NULL,
   ended_at TIMESTAMPTZ NOT NULL,
   winner_id TEXT NOT NULL,
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS vix_matches (
 CREATE TABLE IF NOT EXISTS vix_match_players (
   id BIGSERIAL PRIMARY KEY,
   match_id BIGINT NOT NULL REFERENCES vix_matches(id) ON DELETE CASCADE,
+  room_code TEXT NOT NULL DEFAULT 'public',
   round_number BIGINT NOT NULL,
   ended_at TIMESTAMPTZ NOT NULL,
   player_id TEXT NOT NULL,
@@ -38,5 +40,8 @@ CREATE TABLE IF NOT EXISTS vix_match_players (
 );
 
 CREATE INDEX IF NOT EXISTS idx_vix_matches_ended_at ON vix_matches (ended_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_vix_matches_room_ended_at ON vix_matches (room_code, ended_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_vix_match_players_leaderboard
   ON vix_match_players (is_bot, name, is_winner, score, ended_at);
+CREATE INDEX IF NOT EXISTS idx_vix_match_players_room
+  ON vix_match_players (room_code, ended_at DESC);

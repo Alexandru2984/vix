@@ -198,6 +198,7 @@ LIMIT $1
       const auto rows = tx.exec(
           R"sql(
 SELECT
+  room_code,
   round_number,
   to_char(ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ended_at,
   winner_id,
@@ -225,6 +226,7 @@ LIMIT $1
           result["updatedAt"] = endedAt;
         }
         result["matches"].push_back({
+            {"room", row["room_code"].c_str()},
             {"round", row["round_number"].as<std::uint64_t>()},
             {"endedAt", endedAt},
             {"winner", {
@@ -343,12 +345,13 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     const auto inserted = tx.exec(
         R"sql(
 INSERT INTO vix_matches (
-  round_number, ended_at, winner_id, winner_name, winner_score, duration_seconds,
+  room_code, round_number, ended_at, winner_id, winner_name, winner_score, duration_seconds,
   human_players, bot_players, total_players, participant_count, participants
-) VALUES ($1, $2::timestamptz, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+) VALUES ($1, $2, $3::timestamptz, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
 RETURNING id
 )sql",
         pqxx::params{
+            record.roomCode,
             record.round,
             record.endedAt,
             record.winnerId,
@@ -372,12 +375,13 @@ RETURNING id
       tx.exec(
           R"sql(
 INSERT INTO vix_match_players (
-  match_id, round_number, ended_at, player_id, name, is_bot, is_winner,
+  match_id, room_code, round_number, ended_at, player_id, name, is_bot, is_winner,
   score, orb_pickups, powerups, quests, control_zone_points, abilities_used
-) VALUES ($1, $2, $3::timestamptz, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+) VALUES ($1, $2, $3, $4::timestamptz, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 )sql",
           pqxx::params{
               matchId,
+              record.roomCode,
               record.round,
               record.endedAt,
               participant.id,

@@ -77,6 +77,24 @@ namespace arena
       std::string timestamp;
     };
 
+    struct RoomState
+    {
+      std::vector<Orb> orbs;
+      std::vector<Powerup> powerups;
+      std::deque<GameEvent> eventHistory;
+      std::uint64_t nextOrbNumber{1};
+      std::uint64_t nextPowerupNumber{1};
+      std::uint64_t nextEventNumber{1};
+      std::uint64_t roundNumber{1};
+      std::uint64_t totalRoundsCompleted{0};
+      std::chrono::steady_clock::time_point roundStartedAt;
+      std::chrono::steady_clock::time_point intermissionUntil;
+      bool intermission{false};
+      std::string lastWinnerId;
+      std::string lastWinnerName{"No winner yet"};
+      int lastWinnerScore{0};
+    };
+
     struct ClientProtocolState
     {
       int version{1};
@@ -125,30 +143,33 @@ namespace arena
     [[nodiscard]] std::size_t botCountLocked() const;
     [[nodiscard]] std::size_t humanCountLocked(const std::string &roomCode) const;
     [[nodiscard]] std::size_t botCountLocked(const std::string &roomCode) const;
-    void ensureOrbsLocked();
-    void ensurePowerupsLocked();
-    void updateRoundLocked();
-    void finishRoundLocked(std::chrono::steady_clock::time_point now);
-    void startNextRoundLocked(std::chrono::steady_clock::time_point now);
+    [[nodiscard]] RoomState &roomStateLocked(const std::string &roomCode);
+    [[nodiscard]] const RoomState *roomStateLocked(const std::string &roomCode) const;
+    [[nodiscard]] std::vector<std::string> activeRoomCodesLocked() const;
+    void ensureOrbsLocked(RoomState &room);
+    void ensurePowerupsLocked(RoomState &room);
+    void updateRoundLocked(RoomState &room, const std::string &roomCode);
+    void finishRoundLocked(RoomState &room, std::chrono::steady_clock::time_point now, const std::string &roomCode);
+    void startNextRoundLocked(RoomState &room, std::chrono::steady_clock::time_point now, const std::string &roomCode);
     void loadPersistentStateLocked();
     void savePersistentStateLocked() const;
-    void recordRoundLocked();
-    [[nodiscard]] MatchRecord matchRecordLocked(const std::string &endedAt) const;
+    void recordRoundLocked(RoomState &room, const std::string &roomCode);
+    [[nodiscard]] MatchRecord matchRecordLocked(const RoomState &room, const std::string &endedAt, const std::string &roomCode) const;
     [[nodiscard]] nlohmann::json leaderboardJsonLocked(std::size_t limit = 10) const;
     [[nodiscard]] nlohmann::json matchesJsonLocked(std::size_t limit = 20) const;
-    void handleOrbPickupsLocked();
-    void handlePowerupPickupsLocked();
-    void handleControlZoneLocked(double dt);
+    void handleOrbPickupsLocked(RoomState &room, const std::string &roomCode);
+    void handlePowerupPickupsLocked(RoomState &room, const std::string &roomCode);
+    void handleControlZoneLocked(RoomState &room, const std::string &roomCode, double dt);
     void applyDashLocked(Player &player, std::chrono::steady_clock::time_point now);
     void addEventLocked(std::string type, std::string text, std::string roomCode = "public");
     void cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents);
     [[nodiscard]] nlohmann::json snapshotLocked(std::uint64_t tick, std::uint64_t snapshotId, const std::string &roomCode) const;
     [[nodiscard]] nlohmann::json snapshotDeltaLocked(const nlohmann::json &current, const nlohmann::json &previous, std::uint64_t baseSnapshotId) const;
-    [[nodiscard]] nlohmann::json orbsJsonLocked() const;
-    [[nodiscard]] nlohmann::json powerupsJsonLocked() const;
+    [[nodiscard]] nlohmann::json orbsJsonLocked(const RoomState &room) const;
+    [[nodiscard]] nlohmann::json powerupsJsonLocked(const RoomState &room) const;
     [[nodiscard]] nlohmann::json controlZoneJson() const;
-    [[nodiscard]] nlohmann::json roundJsonLocked() const;
-    [[nodiscard]] nlohmann::json eventsJsonLocked(const std::string &roomCode) const;
+    [[nodiscard]] nlohmann::json roundJsonLocked(const RoomState &room) const;
+    [[nodiscard]] nlohmann::json eventsJsonLocked(const RoomState &room) const;
     [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked(const std::string &roomCode = {}) const;
     [[nodiscard]] std::vector<PreparedPayload> snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const nlohmann::json &snapshot);
 
@@ -160,8 +181,8 @@ namespace arena
     void recordTickDurationLocked(std::uint64_t durationUs);
 
     [[nodiscard]] std::string randomColor();
-    [[nodiscard]] Orb spawnOrbLocked();
-    [[nodiscard]] Powerup spawnPowerupLocked();
+    [[nodiscard]] Orb spawnOrbLocked(RoomState &room);
+    [[nodiscard]] Powerup spawnPowerupLocked(RoomState &room);
 
     mutable std::mutex mutex_;
     World world_;
@@ -171,11 +192,9 @@ namespace arena
     std::unordered_map<ClientConnection *, SessionAbuseState> sessionAbuse_;
     std::unordered_map<std::string, std::size_t> connectionsByIp_;
     std::unordered_map<std::string, std::deque<nlohmann::json>> chatHistoryByRoom_;
-    std::deque<GameEvent> eventHistory_;
+    std::unordered_map<std::string, RoomState> rooms_;
     std::unordered_map<std::string, LeaderboardEntry> leaderboard_;
     std::deque<nlohmann::json> matchHistory_;
-    std::vector<Orb> orbs_;
-    std::vector<Powerup> powerups_;
     std::mt19937 rng_;
     std::filesystem::path dataDir_;
     std::filesystem::path stateFile_;
@@ -191,23 +210,13 @@ namespace arena
     std::uint64_t totalControlZonePoints_{0};
     std::uint64_t totalPowerupsSinceStart_{0};
     std::uint64_t totalQuestsCompleted_{0};
-    std::uint64_t nextOrbNumber_{1};
-    std::uint64_t nextPowerupNumber_{1};
     std::uint64_t nextBotNumber_{1};
-    std::uint64_t nextEventNumber_{1};
-    std::uint64_t roundNumber_{1};
     std::uint64_t totalRoundsCompleted_{0};
     std::uint64_t currentTick_{0};
     std::uint64_t nextSnapshotId_{1};
     std::deque<std::uint64_t> recentTickDurationsUs_;
     std::uint64_t totalTicks_{0};
     std::uint64_t maxTickDurationUs_{0};
-    std::chrono::steady_clock::time_point roundStartedAt_;
-    std::chrono::steady_clock::time_point intermissionUntil_;
-    bool intermission_{false};
-    std::string lastWinnerId_;
-    std::string lastWinnerName_{"No winner yet"};
-    int lastWinnerScore_{0};
 
     static constexpr int tickRateTarget_{20};
     static constexpr std::size_t maxPlayers_{64};

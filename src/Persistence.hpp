@@ -30,6 +30,7 @@ namespace arena
 
   struct MatchRecord
   {
+    std::string roomCode{"public"};
     std::uint64_t round{0};
     std::string endedAt;
     std::string winnerId;
