@@ -12,6 +12,8 @@ fi
 
 "${ROOT_DIR}/scripts/build.sh"
 
+ctest --test-dir "${BUILD_DIR}" --output-on-failure
+
 BINARY="${BUILD_DIR}/vix-arena"
 if [[ ! -x "${BINARY}" ]]; then
   echo "missing binary: ${BINARY}" >&2

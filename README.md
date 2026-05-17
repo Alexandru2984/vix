@@ -12,7 +12,7 @@ cd vix
 ./scripts/check.sh
 ```
 
-`scripts/check.sh` builds the project, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/`, and `/docs`.
+`scripts/check.sh` builds the project, runs the CTest suite, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/`, and `/docs`.
 
 To build only:
 
@@ -65,6 +65,21 @@ Available presets:
 - `release`: Unix Makefiles, `build/`
 - `debug`: Unix Makefiles, `build-debug/`
 - `ninja-release`: Ninja, `build-ninja/`
+
+## Tests
+
+```bash
+./scripts/check.sh
+```
+
+For the C++ unit suite only:
+
+```bash
+./scripts/build.sh
+ctest --test-dir build --output-on-failure
+```
+
+The current unit tests cover text validation, world bounds/collision/spawn behavior, protocol serialization, bad WebSocket payload handling, join flow, chat broadcast, rate limiting, and bot cleanup when the last human leaves.
 
 ## Environment
 

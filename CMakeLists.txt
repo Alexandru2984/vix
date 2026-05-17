@@ -14,8 +14,9 @@ find_package(Boost REQUIRED COMPONENTS system)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
-add_executable(vix-arena
-  src/main.cpp
+include(CTest)
+
+set(ARENA_CORE_SOURCES
   src/GameServer.cpp
   src/Player.cpp
   src/World.cpp
@@ -24,9 +25,23 @@ add_executable(vix-arena
   src/Utils.cpp
 )
 
-target_include_directories(vix-arena PRIVATE src)
-target_link_libraries(vix-arena PRIVATE Boost::system nlohmann_json::nlohmann_json Threads::Threads)
+add_library(vix-arena-core STATIC ${ARENA_CORE_SOURCES})
+target_include_directories(vix-arena-core PUBLIC src)
+target_link_libraries(vix-arena-core PUBLIC Boost::system nlohmann_json::nlohmann_json Threads::Threads)
+
+add_executable(vix-arena src/main.cpp)
+target_link_libraries(vix-arena PRIVATE vix-arena-core)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(vix-arena-core PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_options(vix-arena PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(BUILD_TESTING)
+  add_executable(vix-arena-tests tests/unit_tests.cpp)
+  target_link_libraries(vix-arena-tests PRIVATE vix-arena-core)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(vix-arena-tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME vix-arena-unit COMMAND vix-arena-tests)
 endif()

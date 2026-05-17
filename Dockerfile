@@ -15,7 +15,8 @@ WORKDIR /app
 COPY . .
 
 RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  && cmake --build build --parallel
+  && cmake --build build --parallel \
+  && ctest --test-dir build --output-on-failure
 
 ENV APP_HOST=0.0.0.0
 ENV APP_PORT=18080
