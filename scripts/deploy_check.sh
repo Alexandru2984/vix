@@ -21,6 +21,12 @@ echo
 echo "local html:"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | sed -n '1,8p'
 
+echo "local metrics:"
+if ! curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | sed -n '1,12p'; then
+  echo "local metrics check failed; the running service may not have the new /metrics build deployed yet" >&2
+fi
+echo
+
 echo "public health:"
 if ! curl -fsS "${PUBLIC_URL}/health"; then
   echo "public health check failed; Cloudflare or public routing may be blocking non-browser requests" >&2

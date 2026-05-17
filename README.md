@@ -12,7 +12,7 @@ cd vix
 ./scripts/check.sh
 ```
 
-`scripts/check.sh` builds the project, runs the CTest suite, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/`, and `/docs`.
+`scripts/check.sh` builds the project, runs the CTest suite, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/metrics`, `/`, and `/docs`.
 
 To build only:
 
@@ -104,6 +104,7 @@ PUBLIC_URL=https://vix.micutu.com
 - Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, objective markers, and score feedback.
 - Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, and connection metrics.
 - HTTP endpoints for health, public state, stats, docs, and static frontend files.
+- Prometheus-style `/metrics` endpoint with connection, message, tick-duration, gameplay, and rejection counters.
 
 ## Stack
 
@@ -127,7 +128,7 @@ Cloudflare
 Nginx
   | localhost proxy
 vix-arena C++ server
-  |-- HTTP routes: /, /docs, /health, /api/state, /api/stats
+  |-- HTTP routes: /, /docs, /health, /api/state, /api/stats, /metrics
   |-- WebSocket route: /ws
   |-- authoritative game loop
   |-- in-memory players, bots, pickups, rounds, chat history
@@ -163,8 +164,29 @@ Server messages:
 - `GET /health`: service status, player counts, uptime.
 - `GET /api/state`: public game state, world metadata, pickups, round, events.
 - `GET /api/stats`: operational counters.
+- `GET /metrics`: Prometheus text metrics.
 - `GET /docs`: browser documentation page.
 - `GET /`: game frontend.
+
+## Observability
+
+`/metrics` returns Prometheus text format:
+
+```bash
+curl -fsS http://127.0.0.1:18080/metrics
+```
+
+Current metrics include:
+
+- process health and uptime
+- current humans, bots, and total connected players
+- WebSocket messages and bytes received/sent
+- snapshots and snapshot bytes sent
+- rejected messages, rate-limit rejections, and send failures
+- authoritative tick count and recent tick duration p50/p95/p99/max
+- accepted chat messages, pickups, quests, rounds, and control-zone points
+
+Startup and fatal startup errors are emitted as single-line JSON logs for systemd/journal ingestion.
 
 ## Production
 
@@ -207,5 +229,4 @@ Deploy verification:
 - No authentication or private rooms.
 - No CI until billing is available; use `./scripts/check.sh` locally as the source of truth.
 - No binary protocol or delta snapshots yet.
-- No Prometheus metrics yet.
 - Horizontal scaling would require external state or pub/sub.

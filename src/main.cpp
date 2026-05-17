@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "GameServer.hpp"
+#include "Utils.hpp"
 #include "Validation.hpp"
 
 namespace asio = boost::asio;
@@ -127,6 +128,14 @@ namespace
     res.body() = std::move(body);
     res.prepare_payload();
     return res;
+  }
+
+  void logJson(std::string level, std::string event, nlohmann::json fields = nlohmann::json::object())
+  {
+    fields["level"] = std::move(level);
+    fields["event"] = std::move(event);
+    fields["timestamp"] = arena::isoTimestampUtc();
+    std::cout << fields.dump() << std::endl;
   }
 
   class WebSocketSession : public std::enable_shared_from_this<WebSocketSession>
@@ -301,6 +310,10 @@ namespace
       {
         res = makeResponse(req_, http::status::ok, game_.statsJson().dump(), "application/json; charset=utf-8");
       }
+      else if (target == "/metrics")
+      {
+        res = makeResponse(req_, http::status::ok, game_.metricsText(), "text/plain; version=0.0.4; charset=utf-8");
+      }
       else
       {
         serveFile(target, res);
@@ -437,8 +450,12 @@ int main()
     const auto address = asio::ip::make_address(appHost);
     std::make_shared<Listener>(ioc, tcp::endpoint{address, static_cast<unsigned short>(appPort)}, game, root)->run();
 
-    std::cout << "VixArena listening on " << appHost << ':' << appPort << '\n';
-    std::cout << "WebSocket endpoint: ws://" << appHost << ':' << appPort << "/ws\n";
+    logJson("info", "server_started", {
+                                         {"host", appHost},
+                                         {"port", appPort},
+                                         {"websocketPath", "/ws"},
+                                         {"publicUrl", envString(fileEnv, "PUBLIC_URL", "")},
+                                     });
 
     std::vector<std::thread> threads;
     const unsigned count = std::max(1u, std::thread::hardware_concurrency());
@@ -452,7 +469,7 @@ int main()
   }
   catch (const std::exception &e)
   {
-    std::cerr << "fatal: " << e.what() << '\n';
+    std::cerr << nlohmann::json({{"level", "fatal"}, {"event", "startup_failed"}, {"timestamp", arena::isoTimestampUtc()}, {"error", e.what()}}).dump() << '\n';
     return 1;
   }
 

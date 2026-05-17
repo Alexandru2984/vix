@@ -52,7 +52,8 @@ done
 curl -fsS "http://${APP_HOST}:${APP_PORT}/health" | grep -q '"status":"ok"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/state" | grep -q '"service":"vix-arena"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/stats" | grep -q '"tickRateTarget"'
+curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_up 1"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -q "200 OK"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/docs" | grep -q "200 OK"
 
-echo "check ok: build + local HTTP smoke tests passed on ${APP_HOST}:${APP_PORT}"
+echo "check ok: build + tests + local HTTP/metrics smoke tests passed on ${APP_HOST}:${APP_PORT}"

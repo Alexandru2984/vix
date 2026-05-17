@@ -36,6 +36,7 @@ namespace arena
     [[nodiscard]] nlohmann::json healthJson() const;
     [[nodiscard]] nlohmann::json stateJson() const;
     [[nodiscard]] nlohmann::json statsJson() const;
+    [[nodiscard]] std::string metricsText() const;
 
     [[nodiscard]] int tickRateTarget() const noexcept { return tickRateTarget_; }
 
@@ -106,6 +107,7 @@ namespace arena
     void send(ClientConnection *session, const nlohmann::json &message);
     void broadcast(const nlohmann::json &message);
     void broadcastTo(const std::vector<SessionPtr> &sessions, const nlohmann::json &message);
+    void recordTickDurationLocked(std::uint64_t durationUs);
 
     [[nodiscard]] std::string randomColor();
     [[nodiscard]] Orb spawnOrbLocked();
@@ -137,6 +139,9 @@ namespace arena
     std::uint64_t nextEventNumber_{1};
     std::uint64_t roundNumber_{1};
     std::uint64_t totalRoundsCompleted_{0};
+    std::deque<std::uint64_t> recentTickDurationsUs_;
+    std::uint64_t totalTicks_{0};
+    std::uint64_t maxTickDurationUs_{0};
     std::chrono::steady_clock::time_point roundStartedAt_;
     std::chrono::steady_clock::time_point intermissionUntil_;
     bool intermission_{false};
@@ -169,5 +174,16 @@ namespace arena
     static constexpr double controlPointsPerSecond_{2.0};
     static constexpr int roundDurationSeconds_{180};
     static constexpr int intermissionSeconds_{10};
+    static constexpr std::size_t tickDurationSampleLimit_{512};
+
+    std::atomic<std::uint64_t> totalMessagesReceived_{0};
+    std::atomic<std::uint64_t> totalMessageBytesReceived_{0};
+    std::atomic<std::uint64_t> totalMessagesSent_{0};
+    std::atomic<std::uint64_t> totalMessageBytesSent_{0};
+    std::atomic<std::uint64_t> totalSnapshotsSent_{0};
+    std::atomic<std::uint64_t> totalSnapshotBytesSent_{0};
+    std::atomic<std::uint64_t> totalRejectedMessages_{0};
+    std::atomic<std::uint64_t> totalRateLimitRejects_{0};
+    std::atomic<std::uint64_t> totalSendFailures_{0};
   };
 }

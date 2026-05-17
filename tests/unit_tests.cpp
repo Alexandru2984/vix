@@ -195,6 +195,29 @@ namespace
     requireEq(afterClose.value("humans", 0), 0, "close should remove human");
     requireEq(afterClose.value("bots", 0), 0, "bots should leave when no humans remain");
   }
+
+  void gameServerExposesStatsAndMetrics()
+  {
+    arena::GameServer server;
+    CapturedClient client;
+    server.onOpen(client.connection);
+    server.onMessage(client.connection.get(), R"({"type":"join","name":"Metrics"})");
+    server.onMessage(client.connection.get(), R"({"type":"chat","message":"hello metrics"})");
+    server.onMessage(client.connection.get(), R"({"type":"chat","message":"rate limited"})");
+
+    const auto stats = server.statsJson();
+    require(stats.contains("websocket"), "stats should expose websocket counters");
+    require(stats.contains("tickDurationUs"), "stats should expose tick durations");
+    require(stats.at("websocket").value("messagesReceived", 0) >= 3, "stats should count received messages");
+    require(stats.at("websocket").value("rejectedMessages", 0) >= 1, "stats should count rejected messages");
+    require(stats.at("websocket").value("rateLimitRejects", 0) >= 1, "stats should count rate limit rejects");
+
+    const std::string metrics = server.metricsText();
+    require(metrics.find("# HELP vix_arena_up") != std::string::npos, "metrics should include HELP lines");
+    require(metrics.find("vix_arena_up 1") != std::string::npos, "metrics should include up gauge");
+    require(metrics.find("vix_arena_ws_messages_received_total") != std::string::npos, "metrics should include websocket counters");
+    require(metrics.find("vix_arena_tick_duration_microseconds_p95") != std::string::npos, "metrics should include tick duration gauges");
+  }
 }
 
 int main()
@@ -206,6 +229,7 @@ int main()
     run("protocol serializes player safely", protocolSerializesPlayerSafely);
     run("game server rejects bad payloads", gameServerRejectsBadPayloads);
     run("game server join, chat, and rate limit flow", gameServerJoinChatAndRateLimitFlow);
+    run("game server exposes stats and metrics", gameServerExposesStatsAndMetrics);
   }
   catch (const std::exception &)
   {

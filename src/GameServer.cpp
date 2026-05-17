@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <sstream>
 
 #include "Protocol.hpp"
 #include "Utils.hpp"
@@ -32,6 +33,25 @@ namespace arena
       const double dy = ay - by;
       return dx * dx + dy * dy;
     }
+
+    std::uint64_t percentile(std::vector<std::uint64_t> values, double p)
+    {
+      if (values.empty())
+      {
+        return 0;
+      }
+      std::sort(values.begin(), values.end());
+      const auto index = static_cast<std::size_t>(std::ceil((p / 100.0) * static_cast<double>(values.size())) - 1.0);
+      return values[std::min(index, values.size() - 1)];
+    }
+
+    void appendMetric(std::ostringstream &out, const char *name, const char *help, const char *type, std::uint64_t value)
+    {
+      out << "# HELP " << name << ' ' << help << '\n';
+      out << "# TYPE " << name << ' ' << type << '\n';
+      out << name << ' ' << value << '\n';
+    }
+
   }
 
   GameServer::GameServer()
@@ -108,6 +128,9 @@ namespace arena
 
   void GameServer::onMessage(ClientConnection *session, const std::string &payload)
   {
+    ++totalMessagesReceived_;
+    totalMessageBytesReceived_ += payload.size();
+
     if (payload.size() > maxWsPayloadBytes)
     {
       send(session, errorMessage("message too large"));
@@ -274,6 +297,7 @@ namespace arena
     const auto now = std::chrono::steady_clock::now();
     if (now - pit->second.lastInput < std::chrono::milliseconds(35))
     {
+      ++totalRateLimitRejects_;
       pit->second.lastSeen = now;
       return;
     }
@@ -322,6 +346,7 @@ namespace arena
       const auto now = std::chrono::steady_clock::now();
       if (now - pit->second.lastChat < std::chrono::milliseconds(800))
       {
+        ++totalRateLimitRejects_;
         send(session, errorMessage("chat rate limit"));
         return;
       }
@@ -461,6 +486,7 @@ namespace arena
     while (running_.load())
     {
       const auto now = clock::now();
+      const auto workStarted = now;
       const std::chrono::duration<double> elapsed = now - last;
       last = now;
 
@@ -474,6 +500,8 @@ namespace arena
         cleanupStaleLocked(leftEvents);
         snapshot = snapshotLocked();
         sessions = liveSessionsLocked();
+        recordTickDurationLocked(static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - workStarted).count()));
       }
 
       broadcastTo(sessions, snapshot);
@@ -483,6 +511,17 @@ namespace arena
       }
 
       std::this_thread::sleep_until(now + interval);
+    }
+  }
+
+  void GameServer::recordTickDurationLocked(std::uint64_t durationUs)
+  {
+    ++totalTicks_;
+    maxTickDurationUs_ = std::max(maxTickDurationUs_, durationUs);
+    recentTickDurationsUs_.push_back(durationUs);
+    while (recentTickDurationsUs_.size() > tickDurationSampleLimit_)
+    {
+      recentTickDurationsUs_.pop_front();
     }
   }
 
@@ -1110,11 +1149,19 @@ namespace arena
     {
       if (session && session->open.load() && session->send)
       {
-        session->send(message.dump());
+        const std::string payload = message.dump();
+        ++totalMessagesSent_;
+        totalMessageBytesSent_ += payload.size();
+        if (message.value("type", "") == "error")
+        {
+          ++totalRejectedMessages_;
+        }
+        session->send(payload);
       }
     }
     catch (const std::exception &e)
     {
+      ++totalSendFailures_;
       std::cerr << "send failed: " << e.what() << '\n';
     }
   }
@@ -1132,16 +1179,25 @@ namespace arena
   void GameServer::broadcastTo(const std::vector<SessionPtr> &sessions, const nlohmann::json &message)
   {
     const std::string payload = message.dump();
+    const bool snapshot = message.value("type", "") == "snapshot";
     for (const auto &session : sessions)
     {
       if (session && session->open.load() && session->send)
       {
         try
         {
+          ++totalMessagesSent_;
+          totalMessageBytesSent_ += payload.size();
+          if (snapshot)
+          {
+            ++totalSnapshotsSent_;
+            totalSnapshotBytesSent_ += payload.size();
+          }
           session->send(payload);
         }
         catch (const std::exception &e)
         {
+          ++totalSendFailures_;
           std::cerr << "broadcast failed: " << e.what() << '\n';
         }
       }
@@ -1244,7 +1300,10 @@ namespace arena
 
   nlohmann::json GameServer::statsJson() const
   {
+    std::vector<std::uint64_t> tickSamples;
+    tickSamples.reserve(tickDurationSampleLimit_);
     std::lock_guard<std::mutex> lock(mutex_);
+    tickSamples.assign(recentTickDurationsUs_.begin(), recentTickDurationsUs_.end());
     return {
         {"service", "vix-arena"},
         {"connectedPlayers", players_.size()},
@@ -1260,6 +1319,90 @@ namespace arena
         {"totalPowerupsSinceStart", totalPowerupsSinceStart_},
         {"totalQuestsCompletedSinceStart", totalQuestsCompleted_},
         {"roundNumber", roundNumber_},
-        {"totalRoundsCompletedSinceStart", totalRoundsCompleted_}};
+        {"totalRoundsCompletedSinceStart", totalRoundsCompleted_},
+        {"totalTicksSinceStart", totalTicks_},
+        {"tickDurationUs", {
+                               {"p50", percentile(tickSamples, 50.0)},
+                               {"p95", percentile(tickSamples, 95.0)},
+                               {"p99", percentile(tickSamples, 99.0)},
+                               {"max", maxTickDurationUs_},
+                           }},
+        {"websocket", {
+                          {"messagesReceived", totalMessagesReceived_.load()},
+                          {"messageBytesReceived", totalMessageBytesReceived_.load()},
+                          {"messagesSent", totalMessagesSent_.load()},
+                          {"messageBytesSent", totalMessageBytesSent_.load()},
+                          {"snapshotsSent", totalSnapshotsSent_.load()},
+                          {"snapshotBytesSent", totalSnapshotBytesSent_.load()},
+                          {"rejectedMessages", totalRejectedMessages_.load()},
+                          {"rateLimitRejects", totalRateLimitRejects_.load()},
+                          {"sendFailures", totalSendFailures_.load()},
+                      }}};
+  }
+
+  std::string GameServer::metricsText() const
+  {
+    std::vector<std::uint64_t> tickSamples;
+    std::size_t connectedPlayers = 0;
+    std::size_t humanPlayers = 0;
+    std::size_t botPlayers = 0;
+    std::uint64_t uptime = 0;
+    std::uint64_t totalTicks = 0;
+    std::uint64_t maxTickDurationUs = 0;
+    std::uint64_t totalConnections = 0;
+    std::uint64_t totalChatMessages = 0;
+    std::uint64_t totalOrbPickups = 0;
+    std::uint64_t totalPowerups = 0;
+    std::uint64_t totalQuests = 0;
+    std::uint64_t totalRounds = 0;
+    std::uint64_t totalControlPoints = 0;
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      connectedPlayers = players_.size();
+      humanPlayers = humanCountLocked();
+      botPlayers = botCountLocked();
+      uptime = static_cast<std::uint64_t>(uptimeSeconds(startedAt_));
+      totalTicks = totalTicks_;
+      maxTickDurationUs = maxTickDurationUs_;
+      totalConnections = totalConnections_;
+      totalChatMessages = totalChatMessages_;
+      totalOrbPickups = totalOrbPickups_;
+      totalPowerups = totalPowerupsSinceStart_;
+      totalQuests = totalQuestsCompleted_;
+      totalRounds = totalRoundsCompleted_;
+      totalControlPoints = totalControlZonePoints_;
+      tickSamples.assign(recentTickDurationsUs_.begin(), recentTickDurationsUs_.end());
+    }
+
+    std::ostringstream out;
+    appendMetric(out, "vix_arena_up", "Service health, 1 when process is responding.", "gauge", std::uint64_t{1});
+    appendMetric(out, "vix_arena_uptime_seconds", "Seconds since process start.", "counter", uptime);
+    appendMetric(out, "vix_arena_players_connected", "Current connected players including bots.", "gauge", static_cast<std::uint64_t>(connectedPlayers));
+    appendMetric(out, "vix_arena_players_human", "Current connected human players.", "gauge", static_cast<std::uint64_t>(humanPlayers));
+    appendMetric(out, "vix_arena_players_bot", "Current connected bot players.", "gauge", static_cast<std::uint64_t>(botPlayers));
+    appendMetric(out, "vix_arena_connections_total", "Total WebSocket connections opened.", "counter", totalConnections);
+    appendMetric(out, "vix_arena_ws_messages_received_total", "Total WebSocket messages received.", "counter", totalMessagesReceived_.load());
+    appendMetric(out, "vix_arena_ws_message_bytes_received_total", "Total WebSocket message bytes received.", "counter", totalMessageBytesReceived_.load());
+    appendMetric(out, "vix_arena_ws_messages_sent_total", "Total WebSocket messages sent.", "counter", totalMessagesSent_.load());
+    appendMetric(out, "vix_arena_ws_message_bytes_sent_total", "Total WebSocket message bytes sent.", "counter", totalMessageBytesSent_.load());
+    appendMetric(out, "vix_arena_ws_snapshots_sent_total", "Total WebSocket snapshots sent.", "counter", totalSnapshotsSent_.load());
+    appendMetric(out, "vix_arena_ws_snapshot_bytes_sent_total", "Total WebSocket snapshot bytes sent.", "counter", totalSnapshotBytesSent_.load());
+    appendMetric(out, "vix_arena_ws_rejected_messages_total", "Total rejected WebSocket messages that returned an error.", "counter", totalRejectedMessages_.load());
+    appendMetric(out, "vix_arena_rate_limit_rejections_total", "Total input or chat messages rejected by rate limits.", "counter", totalRateLimitRejects_.load());
+    appendMetric(out, "vix_arena_send_failures_total", "Total WebSocket send failures.", "counter", totalSendFailures_.load());
+    appendMetric(out, "vix_arena_ticks_total", "Total authoritative game loop ticks.", "counter", totalTicks);
+    appendMetric(out, "vix_arena_tick_duration_microseconds_p50", "Recent tick duration p50 in microseconds.", "gauge", percentile(tickSamples, 50.0));
+    appendMetric(out, "vix_arena_tick_duration_microseconds_p95", "Recent tick duration p95 in microseconds.", "gauge", percentile(tickSamples, 95.0));
+    appendMetric(out, "vix_arena_tick_duration_microseconds_p99", "Recent tick duration p99 in microseconds.", "gauge", percentile(tickSamples, 99.0));
+    appendMetric(out, "vix_arena_tick_duration_microseconds_max", "Maximum tick duration observed in microseconds.", "gauge", maxTickDurationUs);
+    appendMetric(out, "vix_arena_chat_messages_total", "Total accepted chat messages.", "counter", totalChatMessages);
+    appendMetric(out, "vix_arena_orb_pickups_total", "Total orb pickups.", "counter", totalOrbPickups);
+    appendMetric(out, "vix_arena_powerup_pickups_total", "Total powerup pickups.", "counter", totalPowerups);
+    appendMetric(out, "vix_arena_quests_completed_total", "Total Orb Run quests completed.", "counter", totalQuests);
+    appendMetric(out, "vix_arena_rounds_completed_total", "Total rounds completed.", "counter", totalRounds);
+    appendMetric(out, "vix_arena_control_zone_points_total", "Total points awarded by control zone.", "counter", totalControlPoints);
+
+    return out.str();
   }
 }
