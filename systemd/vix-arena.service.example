@@ -9,6 +9,7 @@ User=micu
 Group=micu
 WorkingDirectory=/home/micu/vix
 EnvironmentFile=/home/micu/vix/.env
+Environment=DATA_DIR=/var/lib/vix-arena
 ExecStart=/home/micu/vix/build/vix-arena
 Restart=on-failure
 RestartSec=3
@@ -18,6 +19,7 @@ PrivateDevices=true
 ProtectSystem=full
 ProtectHome=read-only
 ReadOnlyPaths=/home/micu/vix
+StateDirectory=vix-arena
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

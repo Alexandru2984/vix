@@ -22,6 +22,9 @@ ENV APP_HOST=0.0.0.0
 ENV APP_PORT=18080
 ENV PUBLIC_URL=http://localhost:18080
 ENV ALLOWED_ORIGINS=http://localhost:18080,http://127.0.0.1:18080
+ENV DATA_DIR=/app/data
+
+RUN mkdir -p /app/data
 
 EXPOSE 18080
 

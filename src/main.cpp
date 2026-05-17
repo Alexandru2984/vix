@@ -417,6 +417,14 @@ namespace
       {
         res = makeResponse(req_, http::status::ok, game_.statsJson().dump(), "application/json; charset=utf-8");
       }
+      else if (target == "/api/leaderboard")
+      {
+        res = makeResponse(req_, http::status::ok, game_.leaderboardJson().dump(), "application/json; charset=utf-8");
+      }
+      else if (target == "/api/matches")
+      {
+        res = makeResponse(req_, http::status::ok, game_.matchesJson().dump(), "application/json; charset=utf-8");
+      }
       else if (target == "/metrics")
       {
         res = makeResponse(req_, http::status::ok, game_.metricsText(), "text/plain; version=0.0.4; charset=utf-8");
@@ -449,6 +457,10 @@ namespace
       {
         path /= "docs.html";
       }
+      else if (target == "/stats")
+      {
+        path /= "stats.html";
+      }
       else
       {
         const std::filesystem::path relative = std::filesystem::path(target.substr(1)).lexically_normal();
@@ -468,7 +480,7 @@ namespace
       }
 
       res = makeResponse(req_, http::status::ok, std::move(body), mimeType(path));
-      res.set(http::field::cache_control, target == "/" || target == "/docs" ? "no-store" : "public, max-age=300");
+      res.set(http::field::cache_control, target == "/" || target == "/docs" || target == "/stats" ? "no-store" : "public, max-age=300");
     }
 
     void onWrite(beast::error_code ec, bool closeAfter)
@@ -550,6 +562,7 @@ int main()
   const std::string appHost = envString(fileEnv, "APP_HOST", "127.0.0.1");
   const int appPort = envInt(fileEnv, "APP_PORT", 18080);
   const std::string publicUrl = envString(fileEnv, "PUBLIC_URL", "");
+  const std::filesystem::path dataDir = envString(fileEnv, "DATA_DIR", (root / "data").string());
   AppConfig config;
   config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", true);
   config.allowedOrigins = parseOriginList(envString(fileEnv, "ALLOWED_ORIGINS", ""));
@@ -560,7 +573,7 @@ int main()
 
   try
   {
-    arena::GameServer game;
+    arena::GameServer game(dataDir);
     game.start();
 
     asio::io_context ioc{static_cast<int>(std::max(2u, std::thread::hardware_concurrency()))};
@@ -583,6 +596,7 @@ int main()
                                          {"port", appPort},
                                          {"websocketPath", "/ws"},
                                          {"publicUrl", publicUrl},
+                                         {"dataDir", dataDir.string()},
                                          {"allowedOrigins", config.allowedOrigins},
                                          {"allowMissingOrigin", config.allowMissingOrigin},
                                      });

@@ -21,6 +21,7 @@ if [[ ! -x "${BINARY}" ]]; then
 fi
 
 LOG_FILE="$(mktemp)"
+DATA_DIR="$(mktemp -d)"
 PID=""
 cleanup() {
   if [[ -n "${PID}" ]] && kill -0 "${PID}" >/dev/null 2>&1; then
@@ -28,12 +29,13 @@ cleanup() {
     wait "${PID}" >/dev/null 2>&1 || true
   fi
   rm -f "${LOG_FILE}"
+  rm -rf "${DATA_DIR}"
 }
 trap cleanup EXIT
 
 (
   cd "${ROOT_DIR}"
-  APP_HOST="${APP_HOST}" APP_PORT="${APP_PORT}" "${BINARY}"
+  APP_HOST="${APP_HOST}" APP_PORT="${APP_PORT}" DATA_DIR="${DATA_DIR}" "${BINARY}"
 ) >"${LOG_FILE}" 2>&1 &
 PID="$!"
 
@@ -52,12 +54,16 @@ done
 curl -fsS "http://${APP_HOST}:${APP_PORT}/health" | grep -q '"status":"ok"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/state" | grep -q '"service":"vix-arena"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/api/stats" | grep -q '"tickRateTarget"'
+curl -fsS "http://${APP_HOST}:${APP_PORT}/api/leaderboard" | grep -q '"entries"'
+curl -fsS "http://${APP_HOST}:${APP_PORT}/api/matches" | grep -q '"matches"'
 curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_up 1"
+curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_leaderboard_entries"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -q "200 OK"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "x-content-type-options: nosniff"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "content-security-policy:"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | grep -qi "x-frame-options: DENY"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/docs" | grep -q "200 OK"
+curl -fsSI "http://${APP_HOST}:${APP_PORT}/stats" | grep -q "200 OK"
 bad_origin_status="$(
   curl -sS -o /dev/null -w "%{http_code}" \
     -H "Connection: Upgrade" \

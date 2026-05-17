@@ -12,7 +12,7 @@ cd vix
 ./scripts/check.sh
 ```
 
-`scripts/check.sh` builds the project, runs the CTest suite, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/metrics`, `/`, `/docs`, security headers, and WebSocket Origin rejection.
+`scripts/check.sh` builds the project, runs the CTest suite, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/api/leaderboard`, `/api/matches`, `/metrics`, `/`, `/docs`, `/stats`, security headers, and WebSocket Origin rejection.
 
 To build only:
 
@@ -93,10 +93,12 @@ WS_PORT=18081
 PUBLIC_URL=https://vix.micutu.com
 ALLOWED_ORIGINS=https://vix.micutu.com,http://127.0.0.1:18080,http://localhost:18080
 ALLOW_MISSING_ORIGIN=true
+DATA_DIR=/home/micu/vix/data
 ```
 
 `APP_PORT` serves both HTTP and WebSocket traffic. The WebSocket endpoint is `/ws`.
 `ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are allowed by default for local CLI smoke tests and can be disabled with `ALLOW_MISSING_ORIGIN=false`.
+`DATA_DIR` stores the persistent leaderboard and match history in `vix-arena-state.json`.
 
 ## Features
 
@@ -106,7 +108,9 @@ ALLOW_MISSING_ORIGIN=true
 - Bots fill the arena for solo play when humans are connected.
 - Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, objective markers, and score feedback.
 - Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, and connection metrics.
-- HTTP endpoints for health, public state, stats, docs, and static frontend files.
+- Persistent leaderboard and recent match history stored as JSON on disk.
+- Public stats page for runtime counters, leaderboard, and recent matches.
+- HTTP endpoints for health, public state, runtime stats, leaderboard, match history, docs, and static frontend files.
 - Prometheus-style `/metrics` endpoint with connection, message, tick-duration, gameplay, and rejection counters.
 
 ## Stack
@@ -131,7 +135,7 @@ Cloudflare
 Nginx
   | localhost proxy
 vix-arena C++ server
-  |-- HTTP routes: /, /docs, /health, /api/state, /api/stats, /metrics
+  |-- HTTP routes: /, /stats, /docs, /health, /api/state, /api/stats, /api/leaderboard, /api/matches, /metrics
   |-- WebSocket route: /ws
   |-- authoritative game loop
   |-- in-memory players, bots, pickups, rounds, chat history
@@ -170,7 +174,10 @@ Server messages:
 - `GET /health`: service status, player counts, uptime.
 - `GET /api/state`: public game state, world metadata, pickups, round, events.
 - `GET /api/stats`: operational counters.
+- `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name.
+- `GET /api/matches`: recent persisted round results.
 - `GET /metrics`: Prometheus text metrics.
+- `GET /stats`: public stats page with leaderboard and match history.
 - `GET /docs`: browser documentation page.
 - `GET /`: game frontend.
 
@@ -191,6 +198,7 @@ Current metrics include:
 - rejected messages, rate-limit rejections, and send failures
 - authoritative tick count and recent tick duration p50/p95/p99/max
 - accepted chat messages, pickups, quests, rounds, and control-zone points
+- persistent leaderboard and match history entry counts
 
 Startup and fatal startup errors are emitted as single-line JSON logs for systemd/journal ingestion.
 

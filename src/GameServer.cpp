@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <unordered_map>
+#include <utility>
 
 #include "Protocol.hpp"
 #include "Utils.hpp"
@@ -63,6 +66,34 @@ namespace arena
                          { return item.is_string() && item.get<std::string>() == value; });
     }
 
+    std::uint64_t jsonUInt(const nlohmann::json &object, const char *key)
+    {
+      if (!object.contains(key))
+      {
+        return 0;
+      }
+      const auto &value = object.at(key);
+      if (value.is_number_unsigned())
+      {
+        return value.get<std::uint64_t>();
+      }
+      if (value.is_number_integer())
+      {
+        const auto signedValue = value.get<std::int64_t>();
+        return signedValue > 0 ? static_cast<std::uint64_t>(signedValue) : 0;
+      }
+      return 0;
+    }
+
+    int jsonInt(const nlohmann::json &object, const char *key)
+    {
+      if (!object.contains(key) || !object.at(key).is_number_integer())
+      {
+        return 0;
+      }
+      return object.at(key).get<int>();
+    }
+
     nlohmann::json collectionDelta(const nlohmann::json &current, const nlohmann::json &previous)
     {
       std::unordered_map<std::string, nlohmann::json> previousById;
@@ -111,12 +142,18 @@ namespace arena
 
   }
 
-  GameServer::GameServer()
+  GameServer::GameServer(std::filesystem::path dataDir)
       : rng_(std::random_device{}()),
+        dataDir_(std::move(dataDir)),
         startedAt_(std::chrono::steady_clock::now()),
         roundStartedAt_(startedAt_),
         intermissionUntil_(startedAt_)
   {
+    if (!dataDir_.empty())
+    {
+      stateFile_ = dataDir_ / "vix-arena-state.json";
+      loadPersistentStateLocked();
+    }
     ensureOrbsLocked();
     ensurePowerupsLocked();
   }
@@ -902,6 +939,8 @@ namespace arena
     intermission_ = true;
     intermissionUntil_ = now + std::chrono::seconds(intermissionSeconds_);
     ++totalRoundsCompleted_;
+    recordRoundLocked();
+    savePersistentStateLocked();
     addEventLocked("round_end", lastWinnerName_ + " won round " + std::to_string(roundNumber_) + " with " + std::to_string(lastWinnerScore_) + " points");
   }
 
@@ -935,6 +974,248 @@ namespace arena
     }
 
     addEventLocked("round_start", "Round " + std::to_string(roundNumber_) + " started");
+  }
+
+  void GameServer::loadPersistentStateLocked()
+  {
+    if (stateFile_.empty() || !std::filesystem::exists(stateFile_))
+    {
+      return;
+    }
+
+    try
+    {
+      std::ifstream in(stateFile_);
+      if (!in)
+      {
+        return;
+      }
+
+      const nlohmann::json state = nlohmann::json::parse(in, nullptr, false);
+      if (state.is_discarded() || !state.is_object())
+      {
+        std::cerr << "ignoring invalid persistent state: " << stateFile_ << '\n';
+        return;
+      }
+
+      leaderboard_.clear();
+      if (state.contains("leaderboard") && state.at("leaderboard").is_array())
+      {
+        for (const auto &item : state.at("leaderboard"))
+        {
+          if (!item.is_object() || !item.contains("name") || !item.at("name").is_string())
+          {
+            continue;
+          }
+
+          LeaderboardEntry entry;
+          entry.name = sanitizeDisplayName(item.at("name").get<std::string>());
+          if (entry.name.empty())
+          {
+            continue;
+          }
+          entry.rounds = jsonUInt(item, "rounds");
+          entry.wins = jsonUInt(item, "wins");
+          entry.totalScore = jsonUInt(item, "totalScore");
+          entry.bestScore = std::max(0, jsonInt(item, "bestScore"));
+          if (item.contains("lastPlayedAt") && item.at("lastPlayedAt").is_string())
+          {
+            entry.lastPlayedAt = item.at("lastPlayedAt").get<std::string>();
+          }
+          leaderboard_[entry.name] = std::move(entry);
+        }
+      }
+
+      matchHistory_.clear();
+      if (state.contains("matches") && state.at("matches").is_array())
+      {
+        for (const auto &item : state.at("matches"))
+        {
+          if (!item.is_object())
+          {
+            continue;
+          }
+          matchHistory_.push_back(item);
+          if (matchHistory_.size() >= matchHistoryLimit_)
+          {
+            break;
+          }
+        }
+      }
+    }
+    catch (const std::exception &e)
+    {
+      std::cerr << "failed to load persistent state from " << stateFile_ << ": " << e.what() << '\n';
+    }
+  }
+
+  void GameServer::savePersistentStateLocked() const
+  {
+    if (stateFile_.empty())
+    {
+      return;
+    }
+
+    try
+    {
+      std::filesystem::create_directories(dataDir_);
+      const std::filesystem::path tmp = stateFile_.string() + ".tmp";
+      nlohmann::json state = {
+          {"schemaVersion", 1},
+          {"service", "vix-arena"},
+          {"updatedAt", isoTimestampUtc()},
+          {"leaderboard", leaderboardJsonLocked(leaderboard_.size()).at("entries")},
+          {"matches", matchesJsonLocked(matchHistoryLimit_).at("matches")}};
+
+      {
+        std::ofstream out(tmp, std::ios::trunc);
+        if (!out)
+        {
+          std::cerr << "failed to open persistent state temp file: " << tmp << '\n';
+          return;
+        }
+        out << state.dump(2) << '\n';
+      }
+
+      std::error_code ec;
+      std::filesystem::rename(tmp, stateFile_, ec);
+      if (ec)
+      {
+        std::filesystem::remove(stateFile_, ec);
+        std::filesystem::rename(tmp, stateFile_, ec);
+      }
+      if (ec)
+      {
+        std::cerr << "failed to replace persistent state file " << stateFile_ << ": " << ec.message() << '\n';
+      }
+    }
+    catch (const std::exception &e)
+    {
+      std::cerr << "failed to save persistent state to " << stateFile_ << ": " << e.what() << '\n';
+    }
+  }
+
+  void GameServer::recordRoundLocked()
+  {
+    if (players_.empty())
+    {
+      return;
+    }
+
+    const std::string endedAt = isoTimestampUtc();
+    std::vector<nlohmann::json> participants;
+    participants.reserve(players_.size());
+
+    for (const auto &[_, player] : players_)
+    {
+      participants.push_back({
+          {"id", player.id},
+          {"name", player.name},
+          {"score", player.score},
+          {"bot", player.bot},
+      });
+
+      if (!player.bot)
+      {
+        const std::string name = sanitizeDisplayName(player.name);
+        if (name.empty())
+        {
+          continue;
+        }
+        LeaderboardEntry &entry = leaderboard_[name];
+        entry.name = name;
+        ++entry.rounds;
+        if (player.id == lastWinnerId_)
+        {
+          ++entry.wins;
+        }
+        entry.totalScore += static_cast<std::uint64_t>(std::max(0, player.score));
+        entry.bestScore = std::max(entry.bestScore, player.score);
+        entry.lastPlayedAt = endedAt;
+      }
+    }
+
+    std::sort(participants.begin(), participants.end(), [](const nlohmann::json &left, const nlohmann::json &right)
+              {
+                const int leftScore = left.value("score", 0);
+                const int rightScore = right.value("score", 0);
+                if (leftScore != rightScore)
+                  return leftScore > rightScore;
+                return left.value("name", "") < right.value("name", "");
+              });
+
+    matchHistory_.push_front({
+        {"round", roundNumber_},
+        {"endedAt", endedAt},
+        {"winner", {
+                       {"id", lastWinnerId_},
+                       {"name", lastWinnerName_},
+                       {"score", lastWinnerScore_},
+                   }},
+        {"participants", participants},
+    });
+    while (matchHistory_.size() > matchHistoryLimit_)
+    {
+      matchHistory_.pop_back();
+    }
+  }
+
+  nlohmann::json GameServer::leaderboardJsonLocked(std::size_t limit) const
+  {
+    std::vector<LeaderboardEntry> entries;
+    entries.reserve(leaderboard_.size());
+    for (const auto &[_, entry] : leaderboard_)
+    {
+      entries.push_back(entry);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const LeaderboardEntry &left, const LeaderboardEntry &right)
+              {
+                if (left.wins != right.wins)
+                  return left.wins > right.wins;
+                if (left.bestScore != right.bestScore)
+                  return left.bestScore > right.bestScore;
+                if (left.totalScore != right.totalScore)
+                  return left.totalScore > right.totalScore;
+                return left.name < right.name;
+              });
+
+    nlohmann::json result = {
+        {"service", "vix-arena"},
+        {"updatedAt", isoTimestampUtc()},
+        {"entries", nlohmann::json::array()},
+    };
+    const std::size_t count = std::min(limit, entries.size());
+    for (std::size_t i = 0; i < count; ++i)
+    {
+      const auto &entry = entries[i];
+      result["entries"].push_back({
+          {"rank", i + 1},
+          {"name", entry.name},
+          {"rounds", entry.rounds},
+          {"wins", entry.wins},
+          {"totalScore", entry.totalScore},
+          {"averageScore", entry.rounds == 0 ? 0.0 : static_cast<double>(entry.totalScore) / static_cast<double>(entry.rounds)},
+          {"bestScore", entry.bestScore},
+          {"lastPlayedAt", entry.lastPlayedAt},
+      });
+    }
+    return result;
+  }
+
+  nlohmann::json GameServer::matchesJsonLocked(std::size_t limit) const
+  {
+    nlohmann::json result = {
+        {"service", "vix-arena"},
+        {"updatedAt", isoTimestampUtc()},
+        {"matches", nlohmann::json::array()},
+    };
+    const std::size_t count = std::min(limit, matchHistory_.size());
+    for (std::size_t i = 0; i < count; ++i)
+    {
+      result["matches"].push_back(matchHistory_[i]);
+    }
+    return result;
   }
 
   void GameServer::handleOrbPickupsLocked()
@@ -1554,6 +1835,11 @@ namespace arena
         {"totalQuestsCompletedSinceStart", totalQuestsCompleted_},
         {"roundNumber", roundNumber_},
         {"totalRoundsCompletedSinceStart", totalRoundsCompleted_},
+        {"persistence", {
+                            {"enabled", !stateFile_.empty()},
+                            {"leaderboardEntries", leaderboard_.size()},
+                            {"matchHistorySize", matchHistory_.size()},
+                        }},
         {"totalTicksSinceStart", totalTicks_},
         {"tickDurationUs", {
                                {"p50", percentile(tickSamples, 50.0)},
@@ -1576,6 +1862,18 @@ namespace arena
                       }}};
   }
 
+  nlohmann::json GameServer::leaderboardJson() const
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return leaderboardJsonLocked();
+  }
+
+  nlohmann::json GameServer::matchesJson() const
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return matchesJsonLocked();
+  }
+
   std::string GameServer::metricsText() const
   {
     std::vector<std::uint64_t> tickSamples;
@@ -1592,6 +1890,8 @@ namespace arena
     std::uint64_t totalQuests = 0;
     std::uint64_t totalRounds = 0;
     std::uint64_t totalControlPoints = 0;
+    std::size_t leaderboardEntries = 0;
+    std::size_t matchHistorySize = 0;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -1608,6 +1908,8 @@ namespace arena
       totalQuests = totalQuestsCompleted_;
       totalRounds = totalRoundsCompleted_;
       totalControlPoints = totalControlZonePoints_;
+      leaderboardEntries = leaderboard_.size();
+      matchHistorySize = matchHistory_.size();
       tickSamples.assign(recentTickDurationsUs_.begin(), recentTickDurationsUs_.end());
     }
 
@@ -1640,6 +1942,8 @@ namespace arena
     appendMetric(out, "vix_arena_quests_completed_total", "Total Orb Run quests completed.", "counter", totalQuests);
     appendMetric(out, "vix_arena_rounds_completed_total", "Total rounds completed.", "counter", totalRounds);
     appendMetric(out, "vix_arena_control_zone_points_total", "Total points awarded by control zone.", "counter", totalControlPoints);
+    appendMetric(out, "vix_arena_leaderboard_entries", "Current persistent leaderboard entries.", "gauge", static_cast<std::uint64_t>(leaderboardEntries));
+    appendMetric(out, "vix_arena_match_history_entries", "Current persistent match history entries.", "gauge", static_cast<std::uint64_t>(matchHistorySize));
 
     return out.str();
   }

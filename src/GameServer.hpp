@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <random>
 #include <string>
@@ -21,7 +22,7 @@ namespace arena
   class GameServer
   {
   public:
-    GameServer();
+    explicit GameServer(std::filesystem::path dataDir = {});
     ~GameServer();
 
     GameServer(const GameServer &) = delete;
@@ -37,6 +38,8 @@ namespace arena
     [[nodiscard]] nlohmann::json healthJson() const;
     [[nodiscard]] nlohmann::json stateJson() const;
     [[nodiscard]] nlohmann::json statsJson() const;
+    [[nodiscard]] nlohmann::json leaderboardJson() const;
+    [[nodiscard]] nlohmann::json matchesJson() const;
     [[nodiscard]] std::string metricsText() const;
 
     [[nodiscard]] int tickRateTarget() const noexcept { return tickRateTarget_; }
@@ -77,6 +80,16 @@ namespace arena
       nlohmann::json lastSnapshot;
     };
 
+    struct LeaderboardEntry
+    {
+      std::string name;
+      std::uint64_t rounds{0};
+      std::uint64_t wins{0};
+      std::uint64_t totalScore{0};
+      int bestScore{0};
+      std::string lastPlayedAt;
+    };
+
     using SessionPtr = std::shared_ptr<ClientConnection>;
     using PreparedPayload = std::pair<SessionPtr, std::string>;
 
@@ -100,6 +113,11 @@ namespace arena
     void updateRoundLocked();
     void finishRoundLocked(std::chrono::steady_clock::time_point now);
     void startNextRoundLocked(std::chrono::steady_clock::time_point now);
+    void loadPersistentStateLocked();
+    void savePersistentStateLocked() const;
+    void recordRoundLocked();
+    [[nodiscard]] nlohmann::json leaderboardJsonLocked(std::size_t limit = 10) const;
+    [[nodiscard]] nlohmann::json matchesJsonLocked(std::size_t limit = 20) const;
     void handleOrbPickupsLocked();
     void handlePowerupPickupsLocked();
     void handleControlZoneLocked(double dt);
@@ -133,9 +151,13 @@ namespace arena
     std::unordered_map<ClientConnection *, ClientProtocolState> sessionProtocol_;
     std::deque<nlohmann::json> chatHistory_;
     std::deque<GameEvent> eventHistory_;
+    std::unordered_map<std::string, LeaderboardEntry> leaderboard_;
+    std::deque<nlohmann::json> matchHistory_;
     std::vector<Orb> orbs_;
     std::vector<Powerup> powerups_;
     std::mt19937 rng_;
+    std::filesystem::path dataDir_;
+    std::filesystem::path stateFile_;
 
     std::atomic<bool> running_{false};
     std::thread tickThread_;
@@ -191,6 +213,7 @@ namespace arena
     static constexpr int roundDurationSeconds_{180};
     static constexpr int intermissionSeconds_{10};
     static constexpr std::size_t tickDurationSampleLimit_{512};
+    static constexpr std::size_t matchHistoryLimit_{50};
 
     std::atomic<std::uint64_t> totalMessagesReceived_{0};
     std::atomic<std::uint64_t> totalMessageBytesReceived_{0};

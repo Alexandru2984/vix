@@ -8,6 +8,7 @@ compile_commands.json
 
 # Runtime/local configuration
 .env
+data/
 *.log
 *.pid
 

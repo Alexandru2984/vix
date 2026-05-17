@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VixArena Stats</title>
+    <link rel="stylesheet" href="/styles.css?v=forta-20260504">
+  </head>
+  <body class="stats-page">
+    <main class="stats-shell">
+      <header class="stats-header">
+        <div>
+          <h1>VixArena Stats</h1>
+          <p>Live runtime counters, persistent leaderboard, and recent match history.</p>
+        </div>
+        <nav class="stats-nav" aria-label="Stats navigation">
+          <a href="/">Arena</a>
+          <a href="/docs">Docs</a>
+        </nav>
+      </header>
+
+      <section class="stats-grid" aria-label="Runtime counters">
+        <article class="stat-tile">
+          <span>Online</span>
+          <strong id="statPlayers">0</strong>
+          <em id="statHumans">0 humans</em>
+        </article>
+        <article class="stat-tile">
+          <span>Rounds</span>
+          <strong id="statRounds">0</strong>
+          <em id="statRoundNumber">round 1 active</em>
+        </article>
+        <article class="stat-tile">
+          <span>Messages</span>
+          <strong id="statMessages">0</strong>
+          <em id="statRejected">0 rejected</em>
+        </article>
+        <article class="stat-tile">
+          <span>Tick p95</span>
+          <strong id="statTick">0us</strong>
+          <em id="statUptime">0s uptime</em>
+        </article>
+      </section>
+
+      <section class="stats-content">
+        <section class="stats-section" aria-labelledby="leaderboardTitle">
+          <div class="stats-section-head">
+            <h2 id="leaderboardTitle">Leaderboard</h2>
+            <span id="leaderboardUpdated">Waiting for data</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Player</th>
+                  <th>Wins</th>
+                  <th>Rounds</th>
+                  <th>Best</th>
+                  <th>Avg</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboardRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="stats-section" aria-labelledby="matchesTitle">
+          <div class="stats-section-head">
+            <h2 id="matchesTitle">Recent Matches</h2>
+            <span id="matchesUpdated">Waiting for data</span>
+          </div>
+          <div id="matchRows" class="match-list"></div>
+        </section>
+      </section>
+    </main>
+    <script src="/stats.js?v=forta-20260504"></script>
+  </body>
+</html>

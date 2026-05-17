@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cmath>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -250,6 +252,41 @@ namespace
     const std::string metrics = server.metricsText();
     require(metrics.find("vix_arena_ws_snapshot_deltas_sent_total") != std::string::npos, "metrics should expose snapshot deltas");
   }
+
+  void gameServerLoadsPersistentLeaderboard()
+  {
+    const auto dir = std::filesystem::temp_directory_path() / ("vix-arena-test-" + std::to_string(arena::unixTimeMs()));
+    std::filesystem::create_directories(dir);
+    {
+      std::ofstream out(dir / "vix-arena-state.json");
+      out << R"({
+        "schemaVersion": 1,
+        "leaderboard": [
+          {"name":"Micu","rounds":3,"wins":2,"totalScore":180,"bestScore":90,"lastPlayedAt":"2026-05-17T10:00:00Z"},
+          {"name":"Ana","rounds":2,"wins":1,"totalScore":140,"bestScore":75,"lastPlayedAt":"2026-05-17T09:00:00Z"}
+        ],
+        "matches": [
+          {"round":7,"endedAt":"2026-05-17T10:00:00Z","winner":{"id":"p-1","name":"Micu","score":90},"participants":[]}
+        ]
+      })";
+    }
+
+    arena::GameServer server(dir);
+    const auto leaderboard = server.leaderboardJson();
+    requireEq(leaderboard.at("entries").size(), std::size_t{2}, "leaderboard should load persisted entries");
+    requireEq(leaderboard.at("entries").at(0).value("name", ""), std::string("Micu"), "leaderboard should sort by wins");
+    requireEq(leaderboard.at("entries").at(0).value("wins", 0), 2, "leaderboard wins should load");
+
+    const auto matches = server.matchesJson();
+    requireEq(matches.at("matches").size(), std::size_t{1}, "match history should load persisted entries");
+    requireEq(matches.at("matches").at(0).at("winner").value("name", ""), std::string("Micu"), "match winner should load");
+
+    const auto stats = server.statsJson();
+    require(stats.at("persistence").value("enabled", false), "persistence should be enabled when data dir is configured");
+    requireEq(stats.at("persistence").value("leaderboardEntries", 0), 2, "stats should expose persistent leaderboard size");
+
+    std::filesystem::remove_all(dir);
+  }
 }
 
 int main()
@@ -263,6 +300,7 @@ int main()
     run("game server join, chat, and rate limit flow", gameServerJoinChatAndRateLimitFlow);
     run("game server exposes stats and metrics", gameServerExposesStatsAndMetrics);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
+    run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
   }
   catch (const std::exception &)
   {
