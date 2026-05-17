@@ -1,0 +1,10 @@
+services:
+  vix-arena:
+    build: .
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 18080
+      PUBLIC_URL: http://localhost:18080
+    ports:
+      - "${APP_PORT:-18080}:18080"
+    restart: unless-stopped

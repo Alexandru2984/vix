@@ -1,55 +1,74 @@
 # VixArena
 
-VixArena is a lightweight real-time 2D multiplayer spatial sandbox deployed at `https://vix.micutu.com`. It demonstrates a C++ backend handling HTTP routes, WebSocket messaging, an authoritative in-memory game loop, global chat, and a plain browser canvas frontend.
+VixArena is a real-time 2D multiplayer arena deployed at `https://vix.micutu.com`. The backend is a C++20 Boost.Beast HTTP/WebSocket server with an authoritative in-memory game loop, bots, abilities, chat, objectives, and a browser canvas frontend.
 
-Vix.cpp v2.5.2 was installed and evaluated on this VPS. Its HTTP listener did not honor localhost-only binding in this environment, so the deployed production server uses a Boost.Beast fallback to satisfy the security requirement that the app bind only to `127.0.0.1`.
+The production service binds to `127.0.0.1` and is exposed through Nginx and Cloudflare.
 
-## Features
-
-- Shared 2D world with server-authoritative movement, bounds, and static obstacles.
-- Collectible orb pickups with server-authoritative scoring and score feedback effects.
-- Temporary speed powerups with server-authoritative boost timers.
-- Server-authoritative abilities: dash, shield/phasing, and magnet.
-- Server-side bots fill the arena for solo play when humans are connected.
-- Contested central control zone that grants passive points only when one player holds it.
-- Orb Run mini quest: every 3 orb pickups grants a server-authoritative bonus.
-- Live leaderboard, arena event feed, minimap, objective HUD, edge target markers, score popups, and local score HUD.
-- WebSocket join, input, ability, chat, ping/pong, and snapshot messages.
-- 20 ticks/sec server loop with low-cost full snapshots for v1.
-- In-memory chat history for the last 50 messages.
-- Responsive canvas frontend with interpolation, HUD, chat, mobile chat badge, floating touch joystick, and connection metrics.
-- HTTP endpoints for health, sanitized state, stats, docs, and the game page.
-
-## Stack
-
-- C++20
-- Vix.cpp SDK v2.5.2 installed on the VPS
-- Boost.Beast fallback server for production HTTP/WebSocket binding
-- CMake + Ninja
-- nlohmann/json
-- systemd service: `vix-arena.service`
-- Nginx reverse proxy with Certbot TLS
-
-## Build
+## Quick Start
 
 ```bash
-cd /home/micu/vix
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/home/micu/.local
-cmake --build build
+git clone <repo-url> vix
+cd vix
+./scripts/check.sh
 ```
 
-## Run Locally On The VPS
+`scripts/check.sh` builds the project, starts a temporary local server on a free localhost port, and verifies `/health`, `/api/state`, `/api/stats`, `/`, and `/docs`.
+
+To build only:
 
 ```bash
-cd /home/micu/vix
-./build/vix-arena
+./scripts/build.sh
 ```
 
-The app reads `.env` from the project root and binds only to localhost.
+The build script uses Ninja when available and falls back to Unix Makefiles. If an old CMake cache was configured with a generator that is not available on the machine, the script reconfigures the build directory.
 
-## Environment Variables
+## Run Locally
 
-`.env` is intentionally ignored by Git.
+```bash
+./scripts/build.sh
+APP_HOST=127.0.0.1 APP_PORT=18080 ./build/vix-arena
+```
+
+Then open:
+
+```text
+http://127.0.0.1:18080
+```
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://127.0.0.1:18080
+```
+
+The container binds to `0.0.0.0` internally and publishes port `18080` by default. Override the host port with:
+
+```bash
+APP_PORT=18082 docker compose up --build
+```
+
+## CMake Presets
+
+```bash
+cmake --preset release
+cmake --build --preset release
+```
+
+Available presets:
+
+- `release`: Unix Makefiles, `build/`
+- `debug`: Unix Makefiles, `build-debug/`
+- `ninja-release`: Ninja, `build-ninja/`
+
+## Environment
+
+The app reads `.env` from the project root. Environment variables override `.env` values.
 
 ```bash
 APP_HOST=127.0.0.1
@@ -59,53 +78,45 @@ WS_PORT=18081
 PUBLIC_URL=https://vix.micutu.com
 ```
 
-`APP_PORT` serves HTTP and WebSocket on `/ws`, bound to `APP_HOST`. `WS_PORT` is kept equal to `APP_PORT` for operational clarity. Nginx exposes both under `https://vix.micutu.com`.
+`APP_PORT` serves both HTTP and WebSocket traffic. The WebSocket endpoint is `/ws`.
 
-## Systemd
+## Features
 
-Service name: `vix-arena.service`
+- Server-authoritative movement, bounds, obstacles, scoring, pickups, powerups, and abilities.
+- 20 ticks/sec authoritative game loop.
+- WebSocket protocol for join, input, abilities, chat, ping/pong, and snapshots.
+- Bots fill the arena for solo play when humans are connected.
+- Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, objective markers, and score feedback.
+- Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, and connection metrics.
+- HTTP endpoints for health, public state, stats, docs, and static frontend files.
 
-Installed path:
+## Stack
 
-```bash
-/etc/systemd/system/vix-arena.service
+- C++20
+- Boost.Beast / Boost.Asio
+- nlohmann/json
+- CMake
+- Browser canvas frontend
+- systemd service
+- Nginx reverse proxy
+- Certbot TLS
+- Cloudflare in front of the VPS
+
+## Architecture
+
+```text
+Browser
+  | HTTPS + WSS
+Cloudflare
+  |
+Nginx
+  | localhost proxy
+vix-arena C++ server
+  |-- HTTP routes: /, /docs, /health, /api/state, /api/stats
+  |-- WebSocket route: /ws
+  |-- authoritative game loop
+  |-- in-memory players, bots, pickups, rounds, chat history
 ```
-
-Local example:
-
-```bash
-systemd/vix-arena.service.example
-```
-
-Common commands:
-
-```bash
-sudo systemctl status vix-arena.service
-sudo journalctl -u vix-arena.service -n 100 --no-pager
-sudo systemctl restart vix-arena.service
-```
-
-## Nginx
-
-Config path:
-
-```bash
-/etc/nginx/sites-available/vix.micutu.com
-```
-
-Enabled path:
-
-```bash
-/etc/nginx/sites-enabled/vix.micutu.com
-```
-
-Nginx proxies `/` and `/ws` to `APP_PORT`; `/ws` includes WebSocket upgrade headers and long proxy timeouts.
-
-## Public URL
-
-- Game: `https://vix.micutu.com`
-- WebSocket: `wss://vix.micutu.com/ws`
-- Docs: `https://vix.micutu.com/docs`
 
 ## WebSocket Protocol
 
@@ -125,89 +136,61 @@ Server messages:
 
 ```json
 {"type":"welcome","id":"p-1","world":{"width":2000,"height":1200,"obstacles":[]}}
-{"type":"snapshot","players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[{"id":1,"type":"orb","text":"Micu collected +5","timestamp":"2026-05-03T17:00:00Z"}]}
+{"type":"snapshot","players":[],"orbs":[],"powerups":[],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[]}
 {"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}
 {"type":"player_joined","id":"p-1","name":"Micu"}
 {"type":"player_left","id":"p-1"}
 {"type":"pong","t":1710000000000}
 ```
 
-## API Endpoints
+## API
 
-- `GET /health` returns status, service name, player count, and uptime.
-- `GET /api/state` returns player count, world size, obstacles, current orbs, speed powerups, round state, and control zone metadata.
-- `GET /api/stats` returns connected players, max players, uptime, tick target, total connections, total chat messages, orb pickups, powerup pickups, rounds, and control-zone points.
-- Bot counters are included in `/health`, `/api/state`, and `/api/stats`.
-- `GET /docs` explains controls, protocol, endpoints, and limitations.
-- `GET /` serves the browser game.
+- `GET /health`: service status, player counts, uptime.
+- `GET /api/state`: public game state, world metadata, pickups, round, events.
+- `GET /api/stats`: operational counters.
+- `GET /docs`: browser documentation page.
+- `GET /`: game frontend.
 
-## Controls
+## Production
 
-- `WASD` or arrow keys: move.
-- `Space`: dash.
-- `Shift`: shield/phasing.
-- `E`: magnet.
-- Touch joystick: move on mobile/touchscreen devices. On touchscreens, dragging directly on the arena also starts a floating joystick.
-- Ability buttons work on desktop and touch devices.
-- Quick ping buttons send short team-style chat messages.
-- Collect glowing orbs for instant points.
-- Grab violet boosts for temporary speed.
-- Hold the central control zone for passive points.
-- Complete Orb Run by collecting 3 orbs for a bonus.
-- Follow the objective HUD and edge markers to find nearby orbs, boosts, or the control zone.
-- `Enter`: focus chat.
-- `Esc`: unfocus chat.
-
-## Deployment Notes
-
-- Work is contained in `/home/micu/vix`.
-- The app binds to `127.0.0.1` only.
-- Vix.cpp v2.5.2 was installed and tested, but its HTTP listener did not honor localhost-only binding on this VPS. The production server therefore uses a Boost.Beast fallback while preserving the requested C++ real-time app behavior.
-- Nginx is the public reverse proxy.
-- Certbot manages the public TLS certificate.
-- Existing services should not be stopped or killed.
-- If a port is occupied, use `scripts/find_free_port.sh` and update `.env`.
-
-## Troubleshooting
+Service name:
 
 ```bash
-curl -fsS http://127.0.0.1:${APP_PORT}/health
-curl -fsSI https://vix.micutu.com/
-sudo nginx -t
-sudo systemctl status nginx
+vix-arena.service
+```
+
+Common commands:
+
+```bash
 sudo systemctl status vix-arena.service
 sudo journalctl -u vix-arena.service -n 100 --no-pager
-ss -ltnp | grep vix-arena
+sudo systemctl restart vix-arena.service
 ```
+
+Deploy verification:
+
+```bash
+./scripts/deploy_check.sh
+```
+
+`deploy_check.sh` requires local health to pass and reports public Cloudflare/routing issues as warnings.
 
 ## Security Notes
 
-- No secrets are exposed to the frontend.
-- Display names and chat messages are length-limited and control-character cleaned.
-- Invalid JSON and unknown WebSocket message types are rejected.
-- Chat is throttled per connection.
-- Input messages are throttled server-side.
-- WebSocket payloads are capped before JSON parsing.
-- The arena caps active joined players.
-- Movement is authoritative and clamped server-side.
-- Abilities and cooldowns are authoritative server-side.
-- No shell commands, user file paths, database, or arbitrary code execution are exposed.
-- Nginx adds basic security headers and handles TLS.
-- Cloudflare sits in front of the VPS. App-level throttles are still kept because Nginx per-IP limits require correct Cloudflare real IP handling or Cloudflare-side WAF/rate-limit rules.
+- The production app binds only to localhost.
+- Nginx handles the public TLS endpoint.
+- Display names and chat messages are length-limited and cleaned of control characters.
+- WebSocket payload size is capped before JSON parsing.
+- Invalid JSON and unknown message types are rejected.
+- Chat and input messages are throttled per connection.
+- Player movement, ability cooldowns, pickups, and scoring are server-authoritative.
+- No shell execution, user file paths, database access, or arbitrary code execution is exposed.
 
-## Performance Notes
-
-- State is in memory and intentionally small.
-- The target tick rate is 20 ticks/sec.
-- Snapshots are compact JSON and include players, scores, boost timers, active orbs, powerups, round state, event feed, and control-zone metadata.
-- The design should handle 20-50 connected players for v1 on a small VPS.
-
-## Limitations / TODOs
+## Current Limitations
 
 - No persistence across restarts.
 - No authentication or private rooms.
-- No binary protocol or delta compression yet.
-- Mobile support is intentionally lightweight for v1; advanced gestures, room setup, and landscape-specific UI modes are still TODOs.
+- No CI until billing is available; use `./scripts/check.sh` locally as the source of truth.
+- No binary protocol or delta snapshots yet.
+- No Prometheus metrics yet.
 - Horizontal scaling would require external state or pub/sub.
-
-

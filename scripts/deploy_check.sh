@@ -22,8 +22,12 @@ echo "local html:"
 curl -fsSI "http://${APP_HOST}:${APP_PORT}/" | sed -n '1,8p'
 
 echo "public health:"
-curl -fsS "${PUBLIC_URL}/health"
+if ! curl -fsS "${PUBLIC_URL}/health"; then
+  echo "public health check failed; Cloudflare or public routing may be blocking non-browser requests" >&2
+fi
 echo
 
 echo "public html:"
-curl -fsSI "${PUBLIC_URL}/" | sed -n '1,12p'
+if ! curl -fsSI "${PUBLIC_URL}/" | sed -n '1,12p'; then
+  echo "public html check failed; Cloudflare or public routing may be blocking non-browser requests" >&2
+fi
