@@ -94,11 +94,13 @@ PUBLIC_URL=https://vix.micutu.com
 ALLOWED_ORIGINS=https://vix.micutu.com,http://127.0.0.1:18080,http://localhost:18080
 ALLOW_MISSING_ORIGIN=true
 DATA_DIR=/home/micu/vix/data
+DATABASE_URL=postgresql:///vix_arena
 ```
 
 `APP_PORT` serves both HTTP and WebSocket traffic. The WebSocket endpoint is `/ws`.
 `ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are allowed by default for local CLI smoke tests and can be disabled with `ALLOW_MISSING_ORIGIN=false`.
-`DATA_DIR` stores the persistent leaderboard and match history in `vix-arena-state.json`.
+`DATA_DIR` stores the JSON fallback leaderboard and match history in `vix-arena-state.json`.
+`DATABASE_URL` enables PostgreSQL persistence for completed rounds, match participants, leaderboard reads, and match history reads. If PostgreSQL is missing or unavailable, the app logs the error and keeps serving from the JSON fallback instead of failing startup.
 
 ## Features
 
@@ -108,7 +110,7 @@ DATA_DIR=/home/micu/vix/data
 - Bots fill the arena for solo play when humans are connected.
 - Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, objective markers, and score feedback.
 - Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, and connection metrics.
-- Persistent leaderboard and recent match history stored as JSON on disk.
+- PostgreSQL-backed leaderboard and recent match history, with JSON-on-disk fallback.
 - Public stats page for runtime counters, leaderboard, and recent matches.
 - HTTP endpoints for health, public state, runtime stats, leaderboard, match history, docs, and static frontend files.
 - Prometheus-style `/metrics` endpoint with connection, message, tick-duration, gameplay, and rejection counters.
@@ -118,6 +120,8 @@ DATA_DIR=/home/micu/vix/data
 - C++20
 - Boost.Beast / Boost.Asio
 - nlohmann/json
+- PostgreSQL
+- libpqxx
 - CMake
 - Browser canvas frontend
 - systemd service
@@ -139,6 +143,8 @@ vix-arena C++ server
   |-- WebSocket route: /ws
   |-- authoritative game loop
   |-- in-memory players, bots, pickups, rounds, chat history
+  |-- PostgreSQL persistence for completed matches and leaderboard aggregation
+  |-- JSON fallback state file when DATABASE_URL is not configured or DB is unavailable
 ```
 
 ## WebSocket Protocol
@@ -174,8 +180,8 @@ Server messages:
 - `GET /health`: service status, player counts, uptime.
 - `GET /api/state`: public game state, world metadata, pickups, round, events.
 - `GET /api/stats`: operational counters.
-- `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name.
-- `GET /api/matches`: recent persisted round results.
+- `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Uses PostgreSQL when enabled.
+- `GET /api/matches`: recent persisted round results. Uses PostgreSQL when enabled.
 - `GET /metrics`: Prometheus text metrics.
 - `GET /stats`: public stats page with leaderboard and match history.
 - `GET /docs`: browser documentation page.
@@ -199,6 +205,7 @@ Current metrics include:
 - authoritative tick count and recent tick duration p50/p95/p99/max
 - accepted chat messages, pickups, quests, rounds, and control-zone points
 - persistent leaderboard and match history entry counts
+- PostgreSQL configured/enabled status, queued writes, saved matches, and failed writes
 
 Startup and fatal startup errors are emitted as single-line JSON logs for systemd/journal ingestion.
 
@@ -226,6 +233,15 @@ Deploy verification:
 
 `deploy_check.sh` requires local health to pass and reports public Cloudflare/routing issues as warnings.
 
+PostgreSQL schema:
+
+```bash
+psql "$DATABASE_URL" -f migrations/001_initial.sql
+psql "$DATABASE_URL" -c '\dt vix_*'
+```
+
+The application also applies the same idempotent schema automatically on startup when `DATABASE_URL` is set.
+
 ## Security Notes
 
 - The production app binds only to localhost.
@@ -239,12 +255,13 @@ Deploy verification:
 - Invalid JSON and unknown message types are rejected.
 - Chat and input messages are throttled per connection.
 - Player movement, ability cooldowns, pickups, and scoring are server-authoritative.
-- No shell execution, user file paths, database access, or arbitrary code execution is exposed.
+- No shell execution, user file paths, direct user database access, or arbitrary code execution is exposed.
+- Database writes are parameterized through libpqxx and happen from a bounded background queue at round end, not on every tick.
 
 ## Current Limitations
 
-- No persistence across restarts.
 - No authentication or private rooms.
 - No CI until billing is available; use `./scripts/check.sh` locally as the source of truth.
-- No binary protocol or delta snapshots yet.
+- PostgreSQL persistence tracks completed rounds and participant stats, not full accounts or long-term player identity.
+- No binary protocol yet.
 - Horizontal scaling would require external state or pub/sub.

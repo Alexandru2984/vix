@@ -32,6 +32,11 @@ namespace arena
     bool bot{false};
     int score{0};
     int orbQuestProgress{0};
+    int roundOrbPickups{0};
+    int roundPowerups{0};
+    int roundQuests{0};
+    int roundControlZonePoints{0};
+    int roundAbilitiesUsed{0};
     double controlCarry{0.0};
     double x{0.0};
     double y{0.0};

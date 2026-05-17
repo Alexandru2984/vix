@@ -4,6 +4,7 @@
 #include <chrono>
 #include <deque>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <string>
@@ -15,6 +16,7 @@
 #include <nlohmann/json.hpp>
 
 #include "Player.hpp"
+#include "Persistence.hpp"
 #include "World.hpp"
 
 namespace arena
@@ -22,7 +24,7 @@ namespace arena
   class GameServer
   {
   public:
-    explicit GameServer(std::filesystem::path dataDir = {});
+    explicit GameServer(std::filesystem::path dataDir = {}, std::string databaseUrl = {});
     ~GameServer();
 
     GameServer(const GameServer &) = delete;
@@ -116,6 +118,7 @@ namespace arena
     void loadPersistentStateLocked();
     void savePersistentStateLocked() const;
     void recordRoundLocked();
+    [[nodiscard]] MatchRecord matchRecordLocked(const std::string &endedAt) const;
     [[nodiscard]] nlohmann::json leaderboardJsonLocked(std::size_t limit = 10) const;
     [[nodiscard]] nlohmann::json matchesJsonLocked(std::size_t limit = 20) const;
     void handleOrbPickupsLocked();
@@ -158,6 +161,7 @@ namespace arena
     std::mt19937 rng_;
     std::filesystem::path dataDir_;
     std::filesystem::path stateFile_;
+    std::unique_ptr<PersistenceStore> persistence_;
 
     std::atomic<bool> running_{false};
     std::thread tickThread_;

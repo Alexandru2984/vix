@@ -20,7 +20,7 @@
   <body>
     <article class="doc">
       <h1>VixArena</h1>
-      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, and serves a plain browser canvas frontend with an objective HUD, minimap, edge target markers, score popups, quick pings, sound toggle, and touch controls.</p>
+      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with an objective HUD, minimap, edge target markers, score popups, quick pings, sound toggle, and touch controls.</p>
 
       <h2>Controls</h2>
       <ul>
@@ -45,10 +45,10 @@
         <li><code>GET /</code> game page.</li>
         <li><code>GET /health</code> health JSON with service status, player count, and uptime.</li>
         <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, powerups, round state, and control zone.</li>
-        <li><code>GET /api/stats</code> runtime counters, human/bot player counts, tick target, pickups, rounds, and control-zone points.</li>
-        <li><code>GET /api/leaderboard</code> persistent leaderboard sorted by wins, best score, total score, and name.</li>
-        <li><code>GET /api/matches</code> recent persisted match history.</li>
-        <li><code>GET /metrics</code> Prometheus text metrics with player counts, WebSocket traffic, tick durations, rejected messages, pickups, quests, and rounds.</li>
+        <li><code>GET /api/stats</code> runtime counters, human/bot player counts, tick target, pickups, rounds, control-zone points, and persistence health.</li>
+        <li><code>GET /api/leaderboard</code> persistent PostgreSQL leaderboard sorted by wins, best score, total score, and name.</li>
+        <li><code>GET /api/matches</code> recent PostgreSQL match history.</li>
+        <li><code>GET /metrics</code> Prometheus text metrics with player counts, WebSocket traffic, tick durations, rejected messages, pickups, quests, rounds, and PostgreSQL write health.</li>
         <li><code>GET /stats</code> public stats page with runtime counters, leaderboard, and match history.</li>
         <li><code>GET /docs</code> this page.</li>
       </ul>
@@ -87,7 +87,7 @@
 
       <h2>Limitations of v1</h2>
       <ul>
-        <li>Persistence covers leaderboard and match history, not full account identity.</li>
+        <li>Persistence covers completed matches, participant stats, leaderboard, and match history, not full account identity.</li>
         <li>No accounts, private rooms, or anti-abuse identity layer.</li>
         <li>Snapshot deltas are JSON deltas rather than binary packets.</li>
         <li>Mobile support is still v1-level; landscape-specific UI modes, haptics, and richer gesture controls are TODOs.</li>

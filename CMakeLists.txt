@@ -13,12 +13,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Threads REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(LIBPQXX REQUIRED IMPORTED_TARGET libpqxx)
 
 include(CTest)
 
 set(ARENA_CORE_SOURCES
   src/GameServer.cpp
   src/Player.cpp
+  src/Persistence.cpp
   src/World.cpp
   src/Protocol.cpp
   src/Validation.cpp
@@ -27,7 +31,7 @@ set(ARENA_CORE_SOURCES
 
 add_library(vix-arena-core STATIC ${ARENA_CORE_SOURCES})
 target_include_directories(vix-arena-core PUBLIC src)
-target_link_libraries(vix-arena-core PUBLIC Boost::system nlohmann_json::nlohmann_json Threads::Threads)
+target_link_libraries(vix-arena-core PUBLIC Boost::system nlohmann_json::nlohmann_json Threads::Threads PkgConfig::LIBPQXX)
 
 add_executable(vix-arena src/main.cpp)
 target_link_libraries(vix-arena PRIVATE vix-arena-core)

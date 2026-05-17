@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -142,13 +143,17 @@ namespace arena
 
   }
 
-  GameServer::GameServer(std::filesystem::path dataDir)
+  GameServer::GameServer(std::filesystem::path dataDir, std::string databaseUrl)
       : rng_(std::random_device{}()),
         dataDir_(std::move(dataDir)),
         startedAt_(std::chrono::steady_clock::now()),
         roundStartedAt_(startedAt_),
         intermissionUntil_(startedAt_)
   {
+    if (!databaseUrl.empty())
+    {
+      persistence_ = std::make_unique<PersistenceStore>(std::move(databaseUrl), matchHistoryLimit_);
+    }
     if (!dataDir_.empty())
     {
       stateFile_ = dataDir_ / "vix-arena-state.json";
@@ -563,6 +568,7 @@ namespace arena
         }
         player.dashReadyAt = now + std::chrono::milliseconds(dashCooldownMs_);
         applyDashLocked(player, now);
+        ++player.roundAbilitiesUsed;
         addEventLocked("dash", player.name + " dashed");
         outgoing = {{"type", "ability"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", player.id}, {"ability", "dash"}, {"timestamp", isoTimestampUtc()}};
         accepted = true;
@@ -576,6 +582,7 @@ namespace arena
         }
         player.shieldUntil = now + std::chrono::milliseconds(shieldDurationMs_);
         player.shieldReadyAt = now + std::chrono::milliseconds(shieldCooldownMs_);
+        ++player.roundAbilitiesUsed;
         addEventLocked("shield", player.name + " phased through obstacles");
         outgoing = {{"type", "ability"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", player.id}, {"ability", "shield"}, {"timestamp", isoTimestampUtc()}};
         accepted = true;
@@ -589,6 +596,7 @@ namespace arena
         }
         player.magnetUntil = now + std::chrono::milliseconds(magnetDurationMs_);
         player.magnetReadyAt = now + std::chrono::milliseconds(magnetCooldownMs_);
+        ++player.roundAbilitiesUsed;
         addEventLocked("magnet", player.name + " activated magnet");
         outgoing = {{"type", "ability"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", player.id}, {"ability", "magnet"}, {"timestamp", isoTimestampUtc()}};
         accepted = true;
@@ -886,6 +894,7 @@ namespace arena
       {
         bot.dashReadyAt = now + std::chrono::milliseconds(dashCooldownMs_ + 700);
         applyDashLocked(bot, now);
+        ++bot.roundAbilitiesUsed;
         addEventLocked("dash", bot.name + " dashed");
       }
       if (!orbs_.empty() && now >= bot.magnetReadyAt)
@@ -896,6 +905,7 @@ namespace arena
         {
           bot.magnetUntil = now + std::chrono::milliseconds(magnetDurationMs_);
           bot.magnetReadyAt = now + std::chrono::milliseconds(magnetCooldownMs_ + 900);
+          ++bot.roundAbilitiesUsed;
           addEventLocked("magnet", bot.name + " activated magnet");
         }
       }
@@ -969,6 +979,11 @@ namespace arena
       player.shieldReadyAt = now;
       player.magnetUntil = now;
       player.magnetReadyAt = now;
+      player.roundOrbPickups = 0;
+      player.roundPowerups = 0;
+      player.roundQuests = 0;
+      player.roundControlZonePoints = 0;
+      player.roundAbilitiesUsed = 0;
       player.facingX = 1.0;
       player.facingY = 0.0;
     }
@@ -1105,6 +1120,7 @@ namespace arena
     const std::string endedAt = isoTimestampUtc();
     std::vector<nlohmann::json> participants;
     participants.reserve(players_.size());
+    const MatchRecord dbRecord = matchRecordLocked(endedAt);
 
     for (const auto &[_, player] : players_)
     {
@@ -1113,6 +1129,12 @@ namespace arena
           {"name", player.name},
           {"score", player.score},
           {"bot", player.bot},
+          {"winner", player.id == lastWinnerId_},
+          {"orbPickups", player.roundOrbPickups},
+          {"powerups", player.roundPowerups},
+          {"quests", player.roundQuests},
+          {"controlZonePoints", player.roundControlZonePoints},
+          {"abilitiesUsed", player.roundAbilitiesUsed},
       });
 
       if (!player.bot)
@@ -1158,6 +1180,46 @@ namespace arena
     {
       matchHistory_.pop_back();
     }
+
+    if (persistence_ && persistence_->enabled())
+    {
+      persistence_->enqueueMatch(dbRecord);
+    }
+  }
+
+  MatchRecord GameServer::matchRecordLocked(const std::string &endedAt) const
+  {
+    MatchRecord record;
+    record.round = roundNumber_;
+    record.endedAt = endedAt;
+    record.winnerId = lastWinnerId_;
+    record.winnerName = lastWinnerName_;
+    record.winnerScore = lastWinnerScore_;
+    record.durationSeconds = roundDurationSeconds_;
+    record.participants.reserve(players_.size());
+
+    for (const auto &[_, player] : players_)
+    {
+      record.participants.push_back({
+          player.id,
+          player.name,
+          player.bot,
+          player.score,
+          player.roundOrbPickups,
+          player.roundPowerups,
+          player.roundQuests,
+          player.roundControlZonePoints,
+          player.roundAbilitiesUsed,
+          player.id == lastWinnerId_});
+    }
+
+    std::sort(record.participants.begin(), record.participants.end(), [](const MatchParticipantRecord &left, const MatchParticipantRecord &right)
+              {
+                if (left.score != right.score)
+                  return left.score > right.score;
+                return left.name < right.name;
+              });
+    return record;
   }
 
   nlohmann::json GameServer::leaderboardJsonLocked(std::size_t limit) const
@@ -1246,12 +1308,14 @@ namespace arena
         {
           player.score += orb.value;
           player.orbQuestProgress += 1;
+          ++player.roundOrbPickups;
           ++totalOrbPickups_;
           addEventLocked("orb", player.name + " collected +" + std::to_string(orb.value));
           if (player.orbQuestProgress >= orbQuestGoal_)
           {
             player.orbQuestProgress = 0;
             player.score += orbQuestReward_;
+            ++player.roundQuests;
             ++totalQuestsCompleted_;
             addEventLocked("quest", player.name + " completed Orb Run +" + std::to_string(orbQuestReward_));
           }
@@ -1277,6 +1341,7 @@ namespace arena
         {
           player.speedBoostUntil = now + std::chrono::milliseconds(
                                              static_cast<int>(powerup.durationSeconds * 1000.0));
+          ++player.roundPowerups;
           ++totalPowerupsSinceStart_;
           addEventLocked("powerup", player.name + " grabbed speed boost");
           powerup = spawnPowerupLocked();
@@ -1318,6 +1383,7 @@ namespace arena
     {
       holder.score += wholePoints;
       totalControlZonePoints_ += static_cast<std::uint64_t>(wholePoints);
+      holder.roundControlZonePoints += wholePoints;
       holder.controlCarry -= wholePoints;
     }
   }
@@ -1816,6 +1882,7 @@ namespace arena
   {
     std::vector<std::uint64_t> tickSamples;
     tickSamples.reserve(tickDurationSampleLimit_);
+    const PersistenceStatus persistenceStatus = persistence_ ? persistence_->status() : PersistenceStatus{};
     std::lock_guard<std::mutex> lock(mutex_);
     tickSamples.assign(recentTickDurationsUs_.begin(), recentTickDurationsUs_.end());
     return {
@@ -1836,7 +1903,14 @@ namespace arena
         {"roundNumber", roundNumber_},
         {"totalRoundsCompletedSinceStart", totalRoundsCompleted_},
         {"persistence", {
-                            {"enabled", !stateFile_.empty()},
+                            {"enabled", !stateFile_.empty() || persistenceStatus.enabled},
+                            {"jsonFileEnabled", !stateFile_.empty()},
+                            {"postgresConfigured", persistenceStatus.configured},
+                            {"postgresEnabled", persistenceStatus.enabled},
+                            {"postgresQueuedWrites", persistenceStatus.queuedWrites},
+                            {"postgresSavedMatches", persistenceStatus.savedMatches},
+                            {"postgresFailedWrites", persistenceStatus.failedWrites},
+                            {"postgresLastError", persistenceStatus.lastError.empty() ? "" : "see service logs"},
                             {"leaderboardEntries", leaderboard_.size()},
                             {"matchHistorySize", matchHistory_.size()},
                         }},
@@ -1864,12 +1938,36 @@ namespace arena
 
   nlohmann::json GameServer::leaderboardJson() const
   {
+    if (persistence_ && persistence_->enabled())
+    {
+      try
+      {
+        return persistence_->leaderboardJson();
+      }
+      catch (const std::exception &e)
+      {
+        std::cerr << "PostgreSQL leaderboard read failed, falling back to JSON state: " << e.what() << '\n';
+      }
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
     return leaderboardJsonLocked();
   }
 
   nlohmann::json GameServer::matchesJson() const
   {
+    if (persistence_ && persistence_->enabled())
+    {
+      try
+      {
+        return persistence_->matchesJson();
+      }
+      catch (const std::exception &e)
+      {
+        std::cerr << "PostgreSQL matches read failed, falling back to JSON state: " << e.what() << '\n';
+      }
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
     return matchesJsonLocked();
   }
@@ -1892,6 +1990,7 @@ namespace arena
     std::uint64_t totalControlPoints = 0;
     std::size_t leaderboardEntries = 0;
     std::size_t matchHistorySize = 0;
+    PersistenceStatus persistenceStatus = persistence_ ? persistence_->status() : PersistenceStatus{};
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -1944,6 +2043,11 @@ namespace arena
     appendMetric(out, "vix_arena_control_zone_points_total", "Total points awarded by control zone.", "counter", totalControlPoints);
     appendMetric(out, "vix_arena_leaderboard_entries", "Current persistent leaderboard entries.", "gauge", static_cast<std::uint64_t>(leaderboardEntries));
     appendMetric(out, "vix_arena_match_history_entries", "Current persistent match history entries.", "gauge", static_cast<std::uint64_t>(matchHistorySize));
+    appendMetric(out, "vix_arena_postgres_configured", "PostgreSQL persistence is configured.", "gauge", persistenceStatus.configured ? 1 : 0);
+    appendMetric(out, "vix_arena_postgres_enabled", "PostgreSQL persistence is enabled.", "gauge", persistenceStatus.enabled ? 1 : 0);
+    appendMetric(out, "vix_arena_postgres_queued_writes", "Queued PostgreSQL match writes.", "gauge", persistenceStatus.queuedWrites);
+    appendMetric(out, "vix_arena_postgres_saved_matches_total", "Matches saved to PostgreSQL.", "counter", persistenceStatus.savedMatches);
+    appendMetric(out, "vix_arena_postgres_failed_writes_total", "Failed PostgreSQL writes.", "counter", persistenceStatus.failedWrites);
 
     return out.str();
   }

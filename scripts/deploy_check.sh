@@ -28,6 +28,9 @@ echo "local metrics:"
 if ! curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | sed -n '1,12p'; then
   echo "local metrics check failed; the running service may not have the new /metrics build deployed yet" >&2
 fi
+if ! curl -fsS "http://${APP_HOST}:${APP_PORT}/metrics" | grep -q "vix_arena_postgres_enabled"; then
+  echo "local postgres metrics check failed; running service may not have the PostgreSQL build deployed yet" >&2
+fi
 echo
 
 echo "public health:"

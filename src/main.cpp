@@ -562,6 +562,7 @@ int main()
   const std::string appHost = envString(fileEnv, "APP_HOST", "127.0.0.1");
   const int appPort = envInt(fileEnv, "APP_PORT", 18080);
   const std::string publicUrl = envString(fileEnv, "PUBLIC_URL", "");
+  const std::string databaseUrl = envString(fileEnv, "DATABASE_URL", "");
   const std::filesystem::path dataDir = envString(fileEnv, "DATA_DIR", (root / "data").string());
   AppConfig config;
   config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", true);
@@ -573,7 +574,7 @@ int main()
 
   try
   {
-    arena::GameServer game(dataDir);
+    arena::GameServer game(dataDir, databaseUrl);
     game.start();
 
     asio::io_context ioc{static_cast<int>(std::max(2u, std::thread::hardware_concurrency()))};
@@ -597,6 +598,7 @@ int main()
                                          {"websocketPath", "/ws"},
                                          {"publicUrl", publicUrl},
                                          {"dataDir", dataDir.string()},
+                                         {"postgresConfigured", !databaseUrl.empty()},
                                          {"allowedOrigins", config.allowedOrigins},
                                          {"allowMissingOrigin", config.allowMissingOrigin},
                                      });

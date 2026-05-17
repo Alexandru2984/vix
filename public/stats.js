@@ -26,6 +26,11 @@ function renderStats(stats) {
   text("statRejected", `${stats.websocket?.rejectedMessages ?? 0} rejected`);
   text("statTick", `${stats.tickDurationUs?.p95 ?? 0}us`);
   text("statUptime", `${stats.uptimeSeconds ?? 0}s uptime`);
+  const persistence = stats.persistence || {};
+  text("statStorage", persistence.postgresEnabled ? "Postgres" : "JSON");
+  text("statStorageDetail", persistence.postgresEnabled
+    ? `${persistence.postgresSavedMatches ?? 0} saved, ${persistence.postgresQueuedWrites ?? 0} queued`
+    : "fallback");
 }
 
 function renderLeaderboard(data) {
