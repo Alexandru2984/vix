@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -45,13 +46,14 @@ namespace arena
     std::uint64_t queuedWrites{0};
     std::uint64_t savedMatches{0};
     std::uint64_t failedWrites{0};
+    std::uint64_t schemaVersion{0};
     std::string lastError;
   };
 
   class PersistenceStore
   {
   public:
-    explicit PersistenceStore(std::string databaseUrl, std::size_t matchHistoryLimit = 50);
+    explicit PersistenceStore(std::string databaseUrl, std::filesystem::path migrationsDir = {}, std::size_t matchHistoryLimit = 50);
     ~PersistenceStore();
 
     PersistenceStore(const PersistenceStore &) = delete;
@@ -71,6 +73,7 @@ namespace arena
     void setLastError(std::string message) const;
 
     std::string databaseUrl_;
+    std::filesystem::path migrationsDir_;
     std::size_t matchHistoryLimit_{50};
     std::atomic<bool> configured_{false};
     std::atomic<bool> enabled_{false};
@@ -81,6 +84,7 @@ namespace arena
     std::thread worker_;
     std::atomic<std::uint64_t> savedMatches_{0};
     std::atomic<std::uint64_t> failedWrites_{0};
+    std::atomic<std::uint64_t> schemaVersion_{0};
     mutable std::string lastError_;
   };
 }

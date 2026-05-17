@@ -1,7 +1,9 @@
 #include "Persistence.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <utility>
 
@@ -15,54 +17,48 @@ namespace arena
   {
     constexpr std::size_t maxQueuedMatches = 128;
 
-    const char *schemaSql = R"sql(
-CREATE TABLE IF NOT EXISTS vix_matches (
-  id BIGSERIAL PRIMARY KEY,
-  round_number BIGINT NOT NULL,
-  ended_at TIMESTAMPTZ NOT NULL,
-  winner_id TEXT NOT NULL,
-  winner_name TEXT NOT NULL,
-  winner_score INTEGER NOT NULL,
-  duration_seconds INTEGER NOT NULL,
-  human_players INTEGER NOT NULL,
-  bot_players INTEGER NOT NULL,
-  total_players INTEGER NOT NULL,
-  participant_count INTEGER NOT NULL,
-  participants JSONB NOT NULL DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS vix_match_players (
-  id BIGSERIAL PRIMARY KEY,
-  match_id BIGINT NOT NULL REFERENCES vix_matches(id) ON DELETE CASCADE,
-  round_number BIGINT NOT NULL,
-  ended_at TIMESTAMPTZ NOT NULL,
-  player_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  is_bot BOOLEAN NOT NULL,
-  is_winner BOOLEAN NOT NULL,
-  score INTEGER NOT NULL,
-  orb_pickups INTEGER NOT NULL,
-  powerups INTEGER NOT NULL,
-  quests INTEGER NOT NULL,
-  control_zone_points INTEGER NOT NULL,
-  abilities_used INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_vix_matches_ended_at ON vix_matches (ended_at DESC, id DESC);
-CREATE INDEX IF NOT EXISTS idx_vix_match_players_leaderboard
-  ON vix_match_players (is_bot, name, is_winner, score, ended_at);
-)sql";
-
     std::string limitString(std::size_t limit, std::size_t fallback)
     {
       const std::size_t clamped = std::clamp(limit == 0 ? fallback : limit, std::size_t{1}, std::size_t{100});
       return std::to_string(clamped);
     }
+
+    std::string readTextFile(const std::filesystem::path &path)
+    {
+      std::ifstream in(path, std::ios::binary);
+      if (!in)
+      {
+        throw std::runtime_error("failed to read migration file: " + path.string());
+      }
+      return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    }
+
+    std::uint64_t migrationVersion(const std::filesystem::path &path)
+    {
+      const std::string name = path.filename().string();
+      std::size_t i = 0;
+      while (i < name.size() && std::isdigit(static_cast<unsigned char>(name[i])))
+      {
+        ++i;
+      }
+      if (i == 0 || i >= name.size() || name[i] != '_')
+      {
+        return 0;
+      }
+      try
+      {
+        return std::stoull(name.substr(0, i));
+      }
+      catch (...)
+      {
+        return 0;
+      }
+    }
   }
 
-  PersistenceStore::PersistenceStore(std::string databaseUrl, std::size_t matchHistoryLimit)
+  PersistenceStore::PersistenceStore(std::string databaseUrl, std::filesystem::path migrationsDir, std::size_t matchHistoryLimit)
       : databaseUrl_(std::move(databaseUrl)),
+        migrationsDir_(std::move(migrationsDir)),
         matchHistoryLimit_(matchHistoryLimit)
   {
     configured_ = !databaseUrl_.empty();
@@ -105,6 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_vix_match_players_leaderboard
         static_cast<std::uint64_t>(queue_.size()),
         savedMatches_.load(),
         failedWrites_.load(),
+        schemaVersion_.load(),
         lastError_};
   }
 
@@ -251,7 +248,52 @@ LIMIT $1
   {
     pqxx::connection connection(databaseUrl_);
     pqxx::work tx(connection);
-    tx.exec(schemaSql);
+    tx.exec(R"sql(
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version BIGINT PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+)sql");
+
+    std::map<std::uint64_t, std::filesystem::path> migrations;
+    if (!migrationsDir_.empty() && std::filesystem::exists(migrationsDir_))
+    {
+      for (const auto &entry : std::filesystem::directory_iterator(migrationsDir_))
+      {
+        if (!entry.is_regular_file() || entry.path().extension() != ".sql")
+        {
+          continue;
+        }
+        const std::uint64_t version = migrationVersion(entry.path());
+        if (version == 0)
+        {
+          continue;
+        }
+        migrations.emplace(version, entry.path());
+      }
+    }
+
+    for (const auto &[version, path] : migrations)
+    {
+      const auto existing = tx.exec(
+          "SELECT 1 FROM schema_migrations WHERE version = $1",
+          pqxx::params{version});
+      if (!existing.empty())
+      {
+        continue;
+      }
+      tx.exec(readTextFile(path));
+      tx.exec(
+          "INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
+          pqxx::params{version, path.filename().string()});
+    }
+
+    const auto current = tx.exec("SELECT coalesce(max(version), 0) FROM schema_migrations");
+    if (!current.empty())
+    {
+      schemaVersion_ = current.front().front().as<std::uint64_t>();
+    }
     tx.commit();
   }
 
