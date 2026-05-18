@@ -2303,41 +2303,81 @@ namespace arena
   nlohmann::json GameServer::roomsJson() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    std::unordered_map<std::string, nlohmann::json> rooms;
+    struct RoomCounts
+    {
+      int players{0};
+      int humans{0};
+      int bots{0};
+    };
+
+    std::unordered_map<std::string, RoomCounts> rooms;
     for (const auto &[_, player] : players_)
     {
-      auto &room = rooms[player.roomCode];
-      if (room.is_null())
-      {
-        room = {
-            {"code", player.roomCode},
-            {"players", 0},
-            {"humans", 0},
-            {"bots", 0},
-        };
-      }
-      room["players"] = room.value("players", 0) + 1;
+      auto &room = rooms[player.roomCode.empty() ? "public" : player.roomCode];
+      ++room.players;
       if (player.bot)
       {
-        room["bots"] = room.value("bots", 0) + 1;
+        ++room.bots;
       }
       else
       {
-        room["humans"] = room.value("humans", 0) + 1;
+        ++room.humans;
       }
     }
 
+    RoomCounts privateCounts;
+    std::size_t privateRooms = 0;
     nlohmann::json result = {
         {"service", "vix-arena"},
         {"updatedAt", isoTimestampUtc()},
+        {"activeRooms", rooms.size()},
+        {"listedRooms", 0},
+        {"hiddenRooms", 0},
         {"rooms", nlohmann::json::array()},
     };
-    for (const auto &[_, room] : rooms)
+    for (const auto &[code, room] : rooms)
     {
-      result["rooms"].push_back(room);
+      if (code == "public")
+      {
+        result["rooms"].push_back({
+            {"code", "public"},
+            {"listed", true},
+            {"players", room.players},
+            {"humans", room.humans},
+            {"bots", room.bots},
+        });
+        continue;
+      }
+
+      ++privateRooms;
+      privateCounts.players += room.players;
+      privateCounts.humans += room.humans;
+      privateCounts.bots += room.bots;
     }
+
+    if (privateRooms > 0)
+    {
+      result["rooms"].push_back({
+          {"code", nullptr},
+          {"label", privateRooms == 1 ? "private room" : "private rooms"},
+          {"listed", false},
+          {"roomCount", privateRooms},
+          {"players", privateCounts.players},
+          {"humans", privateCounts.humans},
+          {"bots", privateCounts.bots},
+      });
+    }
+    result["listedRooms"] = std::count_if(result["rooms"].begin(), result["rooms"].end(), [](const nlohmann::json &room)
+                                          { return room.value("listed", false); });
+    result["hiddenRooms"] = privateRooms;
     std::sort(result["rooms"].begin(), result["rooms"].end(), [](const nlohmann::json &left, const nlohmann::json &right)
-              { return left.value("code", "") < right.value("code", ""); });
+              {
+                if (left.value("listed", false) != right.value("listed", false))
+                  return left.value("listed", false);
+                const std::string leftCode = left.contains("code") && left.at("code").is_string() ? left.at("code").get<std::string>() : "";
+                const std::string rightCode = right.contains("code") && right.at("code").is_string() ? right.at("code").get<std::string>() : "";
+                return leftCode < rightCode;
+              });
     return result;
   }
 

@@ -310,7 +310,13 @@ namespace
     require(bravo.messages.size() == beforeBravoMessages, "chat should stay inside source room");
 
     const auto rooms = server.roomsJson();
-    require(rooms.at("rooms").size() >= 2, "rooms endpoint should expose active rooms");
+    require(rooms.value("hiddenRooms", 0) >= 2, "rooms endpoint should count private rooms");
+    for (const auto &room : rooms.at("rooms"))
+    {
+      const std::string code = room.contains("code") && room.at("code").is_string() ? room.at("code").get<std::string>() : "";
+      require(code != "alpha-room", "rooms endpoint should not leak alpha room code");
+      require(code != "bravo-room", "rooms endpoint should not leak bravo room code");
+    }
   }
 
   void gameServerNegotiatesSnapshotDeltas()

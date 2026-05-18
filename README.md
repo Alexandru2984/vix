@@ -182,7 +182,7 @@ Server messages:
 - `GET /ready`: readiness status, including PostgreSQL configuration and schema version.
 - `GET /api/state`: public game state, world metadata, pickups, round, events.
 - `GET /api/stats`: operational counters.
-- `GET /api/rooms`: active room codes with human/bot/player counts.
+- `GET /api/rooms`: active room summary. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.
 - `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Add `?room=duel-room` for a room-scoped board. Uses PostgreSQL when enabled.
 - `GET /api/matches`: recent persisted round results. Add `?room=duel-room` for room-scoped history. Uses PostgreSQL when enabled.
 - `GET /metrics`: Prometheus text metrics.
@@ -260,6 +260,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 - HTTP responses include baseline security headers: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`.
 - Display names and chat messages are length-limited and cleaned of control characters.
 - WebSocket payload size is capped before JSON parsing.
+- Public room discovery does not leak invite-by-link room codes.
 - Invalid JSON and unknown message types are rejected.
 - Chat and input messages are throttled per connection.
 - Player movement, ability cooldowns, pickups, and scoring are server-authoritative.
