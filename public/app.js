@@ -9,6 +9,7 @@
   const roundTimeEl = document.getElementById("roundTime");
   const boostEl = document.getElementById("boost");
   const pingEl = document.getElementById("ping");
+  const statsLink = document.getElementById("statsLink");
   const joinPanel = document.getElementById("joinPanel");
   const nameInput = document.getElementById("nameInput");
   const roomInput = document.getElementById("roomInput");
@@ -195,6 +196,12 @@
     return url.toString();
   }
 
+  function updateStatsLink() {
+    if (!statsLink) return;
+    const room = sanitizeRoom(roomInput?.value || state.room || "public");
+    statsLink.href = room === "public" ? "/stats" : `/stats?room=${encodeURIComponent(room)}`;
+  }
+
   function handleMessage(msg) {
     if (!msg || typeof msg.type !== "string") return;
 
@@ -202,6 +209,7 @@
       state.localId = msg.id;
       state.room = msg.room || state.room;
       if (roomInput) roomInput.value = state.room;
+      updateStatsLink();
       if (typeof msg.protocolVersion === "number") state.protocolVersion = msg.protocolVersion;
       state.world = msg.world || state.world;
       joinPanel.classList.add("hidden");
@@ -756,6 +764,7 @@
   roomInput?.addEventListener("focus", setAppHeight);
   roomInput?.addEventListener("blur", () => {
     roomInput.value = sanitizeRoom(roomInput.value);
+    updateStatsLink();
     settleViewport();
   });
 
@@ -770,8 +779,13 @@
   roomInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") joinBtn.click();
   });
+  roomInput?.addEventListener("input", () => {
+    roomInput.value = sanitizeRoom(roomInput.value);
+    updateStatsLink();
+  });
   copyRoomBtn?.addEventListener("click", async () => {
     roomInput.value = sanitizeRoom(roomInput.value);
+    updateStatsLink();
     try {
       await navigator.clipboard.writeText(roomLink());
       appendSystem("Room link copied");
@@ -1189,5 +1203,6 @@
   setAppHeight(true);
   resize();
   connect();
+  updateStatsLink();
   requestAnimationFrame(render);
 })();

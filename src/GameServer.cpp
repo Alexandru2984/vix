@@ -95,33 +95,6 @@ namespace arena
       return object.at(key).get<int>();
     }
 
-    std::string sanitizeRoomCode(std::string value)
-    {
-      std::string out;
-      out.reserve(24);
-      for (unsigned char c : value)
-      {
-        if (std::isalnum(c))
-        {
-          out.push_back(static_cast<char>(std::tolower(c)));
-        }
-        else if (c == '-' || c == '_')
-        {
-          out.push_back('-');
-        }
-        if (out.size() >= 24)
-        {
-          break;
-        }
-      }
-
-      while (!out.empty() && out.front() == '-')
-        out.erase(out.begin());
-      while (!out.empty() && out.back() == '-')
-        out.pop_back();
-      return out.size() < 3 ? "public" : out;
-    }
-
     nlohmann::json collectionDelta(const nlohmann::json &current, const nlohmann::json &previous)
     {
       std::unordered_map<std::string, nlohmann::json> previousById;
@@ -1490,11 +1463,50 @@ namespace arena
     return record;
   }
 
-  nlohmann::json GameServer::leaderboardJsonLocked(std::size_t limit) const
+  nlohmann::json GameServer::leaderboardJsonLocked(std::size_t limit, const std::string &roomCode) const
   {
+    std::unordered_map<std::string, LeaderboardEntry> roomEntries;
+    const std::unordered_map<std::string, LeaderboardEntry> *source = &leaderboard_;
+    if (!roomCode.empty())
+    {
+      for (const auto &match : matchHistory_)
+      {
+        const std::string matchRoom = match.value("room", "public");
+        if (matchRoom != roomCode || !match.contains("participants") || !match.at("participants").is_array())
+        {
+          continue;
+        }
+        const std::string endedAt = match.value("endedAt", "");
+        for (const auto &participant : match.at("participants"))
+        {
+          if (participant.value("bot", false))
+          {
+            continue;
+          }
+          const std::string name = sanitizeDisplayName(participant.value("name", ""));
+          if (name.empty())
+          {
+            continue;
+          }
+          LeaderboardEntry &entry = roomEntries[name];
+          entry.name = name;
+          ++entry.rounds;
+          if (participant.value("winner", false))
+          {
+            ++entry.wins;
+          }
+          const int score = participant.value("score", 0);
+          entry.totalScore += static_cast<std::uint64_t>(std::max(0, score));
+          entry.bestScore = std::max(entry.bestScore, score);
+          entry.lastPlayedAt = std::max(entry.lastPlayedAt, endedAt);
+        }
+      }
+      source = &roomEntries;
+    }
+
     std::vector<LeaderboardEntry> entries;
-    entries.reserve(leaderboard_.size());
-    for (const auto &[_, entry] : leaderboard_)
+    entries.reserve(source->size());
+    for (const auto &[_, entry] : *source)
     {
       entries.push_back(entry);
     }
@@ -1512,6 +1524,8 @@ namespace arena
 
     nlohmann::json result = {
         {"service", "vix-arena"},
+        {"source", "json"},
+        {"room", roomCode.empty() ? nlohmann::json(nullptr) : nlohmann::json(roomCode)},
         {"updatedAt", isoTimestampUtc()},
         {"entries", nlohmann::json::array()},
     };
@@ -1533,17 +1547,26 @@ namespace arena
     return result;
   }
 
-  nlohmann::json GameServer::matchesJsonLocked(std::size_t limit) const
+  nlohmann::json GameServer::matchesJsonLocked(std::size_t limit, const std::string &roomCode) const
   {
     nlohmann::json result = {
         {"service", "vix-arena"},
+        {"source", "json"},
+        {"room", roomCode.empty() ? nlohmann::json(nullptr) : nlohmann::json(roomCode)},
         {"updatedAt", isoTimestampUtc()},
         {"matches", nlohmann::json::array()},
     };
-    const std::size_t count = std::min(limit, matchHistory_.size());
-    for (std::size_t i = 0; i < count; ++i)
+    for (const auto &match : matchHistory_)
     {
-      result["matches"].push_back(matchHistory_[i]);
+      if (!roomCode.empty() && match.value("room", "public") != roomCode)
+      {
+        continue;
+      }
+      result["matches"].push_back(match);
+      if (result["matches"].size() >= limit)
+      {
+        break;
+      }
     }
     return result;
   }
@@ -2318,13 +2341,14 @@ namespace arena
     return result;
   }
 
-  nlohmann::json GameServer::leaderboardJson() const
+  nlohmann::json GameServer::leaderboardJson(const std::string &roomCode) const
   {
+    const std::string room = roomCode.empty() ? "" : sanitizeRoomCode(roomCode);
     if (persistence_ && persistence_->enabled())
     {
       try
       {
-        return persistence_->leaderboardJson();
+        return persistence_->leaderboardJson(10, room);
       }
       catch (const std::exception &e)
       {
@@ -2333,16 +2357,17 @@ namespace arena
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    return leaderboardJsonLocked();
+    return leaderboardJsonLocked(10, room);
   }
 
-  nlohmann::json GameServer::matchesJson() const
+  nlohmann::json GameServer::matchesJson(const std::string &roomCode) const
   {
+    const std::string room = roomCode.empty() ? "" : sanitizeRoomCode(roomCode);
     if (persistence_ && persistence_->enabled())
     {
       try
       {
-        return persistence_->matchesJson();
+        return persistence_->matchesJson(20, room);
       }
       catch (const std::exception &e)
       {
@@ -2351,7 +2376,7 @@ namespace arena
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    return matchesJsonLocked();
+    return matchesJsonLocked(20, room);
   }
 
   std::string GameServer::metricsText() const

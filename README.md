@@ -183,8 +183,8 @@ Server messages:
 - `GET /api/state`: public game state, world metadata, pickups, round, events.
 - `GET /api/stats`: operational counters.
 - `GET /api/rooms`: active room codes with human/bot/player counts.
-- `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Uses PostgreSQL when enabled.
-- `GET /api/matches`: recent persisted round results. Uses PostgreSQL when enabled.
+- `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Add `?room=duel-room` for a room-scoped board. Uses PostgreSQL when enabled.
+- `GET /api/matches`: recent persisted round results. Add `?room=duel-room` for room-scoped history. Uses PostgreSQL when enabled.
 - `GET /metrics`: Prometheus text metrics.
 - `GET /stats`: public stats page with leaderboard and match history.
 - `GET /docs`: browser documentation page.
@@ -268,7 +268,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 
 ## Current Limitations
 
-- No authentication or private rooms.
+- Private rooms are invite-by-link room codes, not password-protected rooms.
 - No CI until billing is available; use `./scripts/check.sh` locally as the source of truth.
 - PostgreSQL persistence tracks completed rounds and participant stats, not full accounts or long-term player identity.
 - No binary protocol yet.

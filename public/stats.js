@@ -1,4 +1,7 @@
 const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+const roomFilter = document.getElementById("roomFilter");
+const applyRoomFilter = document.getElementById("applyRoomFilter");
+const clearRoomFilter = document.getElementById("clearRoomFilter");
 
 function text(id, value) {
   const el = document.getElementById(id);
@@ -15,6 +18,31 @@ async function getJson(path) {
   const res = await fetch(path, { cache: "no-store" });
   if (!res.ok) throw new Error(`${path} returned ${res.status}`);
   return res.json();
+}
+
+function sanitizeRoom(value) {
+  const clean = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  return clean.length >= 3 ? clean : "";
+}
+
+function selectedRoom() {
+  return sanitizeRoom(roomFilter?.value || new URLSearchParams(window.location.search).get("room") || "");
+}
+
+function roomQuery() {
+  const room = selectedRoom();
+  return room ? `?room=${encodeURIComponent(room)}` : "";
+}
+
+function setUrlRoom(room) {
+  const url = new URL(window.location.href);
+  if (room) url.searchParams.set("room", room);
+  else url.searchParams.delete("room");
+  window.history.replaceState({}, "", url);
 }
 
 function renderStats(stats) {
@@ -34,7 +62,8 @@ function renderStats(stats) {
 }
 
 function renderLeaderboard(data) {
-  text("leaderboardUpdated", `Updated ${timeLabel(data.updatedAt)}`);
+  const room = data.room ? `Room ${data.room}` : "All rooms";
+  text("leaderboardUpdated", `${room} · Updated ${timeLabel(data.updatedAt)}`);
   const body = document.getElementById("leaderboardRows");
   if (!body) return;
   body.replaceChildren();
@@ -69,7 +98,8 @@ function renderLeaderboard(data) {
 }
 
 function renderMatches(data) {
-  text("matchesUpdated", `Updated ${timeLabel(data.updatedAt)}`);
+  const room = data.room ? `Room ${data.room}` : "All rooms";
+  text("matchesUpdated", `${room} · Updated ${timeLabel(data.updatedAt)}`);
   const list = document.getElementById("matchRows");
   if (!list) return;
   list.replaceChildren();
@@ -91,7 +121,7 @@ function renderMatches(data) {
     const strong = document.createElement("strong");
     strong.textContent = `Round ${match.round}`;
     const span = document.createElement("span");
-    span.textContent = timeLabel(match.endedAt);
+    span.textContent = `${match.room || "public"} · ${timeLabel(match.endedAt)}`;
     title.append(strong, span);
 
     const result = document.createElement("p");
@@ -107,8 +137,8 @@ async function refresh() {
   try {
     const [stats, leaderboard, matches] = await Promise.all([
       getJson("/api/stats"),
-      getJson("/api/leaderboard"),
-      getJson("/api/matches"),
+      getJson(`/api/leaderboard${roomQuery()}`),
+      getJson(`/api/matches${roomQuery()}`),
     ]);
     renderStats(stats);
     renderLeaderboard(leaderboard);
@@ -118,6 +148,26 @@ async function refresh() {
     text("matchesUpdated", error.message);
   }
 }
+
+const initialRoom = sanitizeRoom(new URLSearchParams(window.location.search).get("room") || "");
+if (roomFilter && initialRoom) roomFilter.value = initialRoom;
+applyRoomFilter?.addEventListener("click", () => {
+  const room = selectedRoom();
+  if (roomFilter) roomFilter.value = room;
+  setUrlRoom(room);
+  refresh();
+});
+clearRoomFilter?.addEventListener("click", () => {
+  if (roomFilter) roomFilter.value = "";
+  setUrlRoom("");
+  refresh();
+});
+roomFilter?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") applyRoomFilter?.click();
+});
+roomFilter?.addEventListener("input", () => {
+  roomFilter.value = sanitizeRoom(roomFilter.value);
+});
 
 refresh();
 setInterval(refresh, 10000);

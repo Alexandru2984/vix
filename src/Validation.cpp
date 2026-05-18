@@ -63,6 +63,33 @@ namespace arena
     return cleanText(input, maxChatLength);
   }
 
+  std::string sanitizeRoomCode(const std::string &input)
+  {
+    std::string out;
+    out.reserve(24);
+    for (unsigned char c : input)
+    {
+      if (std::isalnum(c))
+      {
+        out.push_back(static_cast<char>(std::tolower(c)));
+      }
+      else if (!out.empty() && out.back() != '-')
+      {
+        out.push_back('-');
+      }
+      if (out.size() >= 24)
+      {
+        break;
+      }
+    }
+
+    while (!out.empty() && out.front() == '-')
+      out.erase(out.begin());
+    while (!out.empty() && out.back() == '-')
+      out.pop_back();
+    return out.size() < 3 ? "public" : out;
+  }
+
   bool isTruthyBoolJsonCompatible(bool value)
   {
     return value;

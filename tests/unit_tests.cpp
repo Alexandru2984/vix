@@ -159,6 +159,7 @@ namespace
     requireEq(error.value("protocolVersion", 0), arena::protocolVersion, "error should expose protocol version");
     requireEq(arena::makePlayerId(9), std::string("p-9"), "player id helper");
     requireEq(arena::makeGuestName(9), std::string("Guest 1009"), "guest helper");
+    requireEq(arena::sanitizeRoomCode("  Duel Room!! "), std::string("duel-room"), "room code should normalize");
   }
 
   void gameServerRejectsBadPayloads()
@@ -345,7 +346,13 @@ namespace
           {"name":"Ana","rounds":2,"wins":1,"totalScore":140,"bestScore":75,"lastPlayedAt":"2026-05-17T09:00:00Z"}
         ],
         "matches": [
-          {"round":7,"endedAt":"2026-05-17T10:00:00Z","winner":{"id":"p-1","name":"Micu","score":90},"participants":[]}
+          {"round":7,"room":"duel-room","endedAt":"2026-05-17T10:00:00Z","winner":{"id":"p-1","name":"Micu","score":90},"participants":[
+            {"id":"p-1","name":"Micu","score":90,"bot":false,"winner":true},
+            {"id":"p-2","name":"Ana","score":70,"bot":false,"winner":false}
+          ]},
+          {"round":8,"room":"public","endedAt":"2026-05-17T11:00:00Z","winner":{"id":"p-3","name":"Public","score":50},"participants":[
+            {"id":"p-3","name":"Public","score":50,"bot":false,"winner":true}
+          ]}
         ]
       })";
     }
@@ -357,8 +364,15 @@ namespace
     requireEq(leaderboard.at("entries").at(0).value("wins", 0), 2, "leaderboard wins should load");
 
     const auto matches = server.matchesJson();
-    requireEq(matches.at("matches").size(), std::size_t{1}, "match history should load persisted entries");
+    requireEq(matches.at("matches").size(), std::size_t{2}, "match history should load persisted entries");
     requireEq(matches.at("matches").at(0).at("winner").value("name", ""), std::string("Micu"), "match winner should load");
+    const auto roomMatches = server.matchesJson("duel-room");
+    requireEq(roomMatches.at("room").get<std::string>(), std::string("duel-room"), "room match filter should echo room");
+    requireEq(roomMatches.at("matches").size(), std::size_t{1}, "room match filter should only include requested room");
+    const auto roomLeaderboard = server.leaderboardJson("duel-room");
+    requireEq(roomLeaderboard.at("room").get<std::string>(), std::string("duel-room"), "room leaderboard should echo room");
+    requireEq(roomLeaderboard.at("entries").size(), std::size_t{2}, "room leaderboard should aggregate match participants");
+    requireEq(roomLeaderboard.at("entries").at(0).value("name", ""), std::string("Micu"), "room leaderboard should sort winner first");
 
     const auto stats = server.statsJson();
     require(stats.at("persistence").value("enabled", false), "persistence should be enabled when data dir is configured");

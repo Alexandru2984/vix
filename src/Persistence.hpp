@@ -63,8 +63,8 @@ namespace arena
     [[nodiscard]] PersistenceStatus status() const;
     [[nodiscard]] bool enabled() const noexcept { return enabled_.load(); }
     void enqueueMatch(MatchRecord record);
-    [[nodiscard]] nlohmann::json leaderboardJson(std::size_t limit = 10) const;
-    [[nodiscard]] nlohmann::json matchesJson(std::size_t limit = 20) const;
+    [[nodiscard]] nlohmann::json leaderboardJson(std::size_t limit = 10, const std::string &roomCode = {}) const;
+    [[nodiscard]] nlohmann::json matchesJson(std::size_t limit = 20, const std::string &roomCode = {}) const;
 
   private:
     void migrate();

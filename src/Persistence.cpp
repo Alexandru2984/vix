@@ -126,11 +126,12 @@ namespace arena
     cv_.notify_one();
   }
 
-  nlohmann::json PersistenceStore::leaderboardJson(std::size_t limit) const
+  nlohmann::json PersistenceStore::leaderboardJson(std::size_t limit, const std::string &roomCode) const
   {
     nlohmann::json result = {
         {"service", "vix-arena"},
         {"source", "postgresql"},
+        {"room", roomCode.empty() ? nlohmann::json(nullptr) : nlohmann::json(roomCode)},
         {"updatedAt", isoTimestampUtc()},
         {"entries", nlohmann::json::array()},
     };
@@ -139,8 +140,7 @@ namespace arena
     {
       pqxx::connection connection(databaseUrl_);
       pqxx::read_transaction tx(connection);
-      const auto rows = tx.exec(
-          R"sql(
+      const auto sql = roomCode.empty() ? R"sql(
 SELECT
   name,
   count(*)::BIGINT AS rounds,
@@ -154,8 +154,25 @@ WHERE NOT is_bot
 GROUP BY name
 ORDER BY wins DESC, best_score DESC, total_score DESC, name ASC
 LIMIT $1
-)sql",
-          pqxx::params{limitString(limit, 10)});
+)sql"
+                                        : R"sql(
+SELECT
+  name,
+  count(*)::BIGINT AS rounds,
+  count(*) FILTER (WHERE is_winner)::BIGINT AS wins,
+  coalesce(sum(score), 0)::BIGINT AS total_score,
+  coalesce(max(score), 0)::INTEGER AS best_score,
+  coalesce(avg(score), 0)::DOUBLE PRECISION AS average_score,
+  to_char(max(ended_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_played_at
+FROM vix_match_players
+WHERE NOT is_bot AND room_code = $2
+GROUP BY name
+ORDER BY wins DESC, best_score DESC, total_score DESC, name ASC
+LIMIT $1
+)sql";
+      const auto rows = roomCode.empty()
+                            ? tx.exec(sql, pqxx::params{limitString(limit, 10)})
+                            : tx.exec(sql, pqxx::params{limitString(limit, 10), roomCode});
 
       std::size_t rank = 1;
       for (const auto &row : rows)
@@ -182,11 +199,12 @@ LIMIT $1
     }
   }
 
-  nlohmann::json PersistenceStore::matchesJson(std::size_t limit) const
+  nlohmann::json PersistenceStore::matchesJson(std::size_t limit, const std::string &roomCode) const
   {
     nlohmann::json result = {
         {"service", "vix-arena"},
         {"source", "postgresql"},
+        {"room", roomCode.empty() ? nlohmann::json(nullptr) : nlohmann::json(roomCode)},
         {"updatedAt", ""},
         {"matches", nlohmann::json::array()},
     };
@@ -195,8 +213,7 @@ LIMIT $1
     {
       pqxx::connection connection(databaseUrl_);
       pqxx::read_transaction tx(connection);
-      const auto rows = tx.exec(
-          R"sql(
+      const auto sql = roomCode.empty() ? R"sql(
 SELECT
   room_code,
   round_number,
@@ -208,8 +225,24 @@ SELECT
 FROM vix_matches
 ORDER BY ended_at DESC, id DESC
 LIMIT $1
-)sql",
-          pqxx::params{limitString(limit, matchHistoryLimit_)});
+)sql"
+                                        : R"sql(
+SELECT
+  room_code,
+  round_number,
+  to_char(ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ended_at,
+  winner_id,
+  winner_name,
+  winner_score,
+  participants::TEXT AS participants
+FROM vix_matches
+WHERE room_code = $2
+ORDER BY ended_at DESC, id DESC
+LIMIT $1
+)sql";
+      const auto rows = roomCode.empty()
+                            ? tx.exec(sql, pqxx::params{limitString(limit, matchHistoryLimit_)})
+                            : tx.exec(sql, pqxx::params{limitString(limit, matchHistoryLimit_), roomCode});
 
       for (const auto &row : rows)
       {

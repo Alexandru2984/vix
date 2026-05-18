@@ -19,6 +19,13 @@
         </nav>
       </header>
 
+      <section class="stats-filters" aria-label="Room filter">
+        <label for="roomFilter">Room</label>
+        <input id="roomFilter" maxlength="24" autocomplete="off" placeholder="all rooms">
+        <button id="applyRoomFilter" type="button">Apply</button>
+        <button id="clearRoomFilter" type="button">All</button>
+      </section>
+
       <section class="stats-grid" aria-label="Runtime counters">
         <article class="stat-tile">
           <span>Online</span>
@@ -79,6 +86,6 @@
         </section>
       </section>
     </main>
-    <script src="/stats.js?v=pg-20260517"></script>
+    <script src="/stats.js?v=roomstats-20260518"></script>
   </body>
 </html>

@@ -14,6 +14,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -85,6 +86,67 @@ namespace
       start = comma + 1;
     }
     return origins;
+  }
+
+  int hexValue(char c)
+  {
+    if (c >= '0' && c <= '9')
+      return c - '0';
+    if (c >= 'a' && c <= 'f')
+      return 10 + c - 'a';
+    if (c >= 'A' && c <= 'F')
+      return 10 + c - 'A';
+    return -1;
+  }
+
+  std::string urlDecode(std::string_view value)
+  {
+    std::string out;
+    out.reserve(value.size());
+    for (std::size_t i = 0; i < value.size(); ++i)
+    {
+      if (value[i] == '+')
+      {
+        out.push_back(' ');
+      }
+      else if (value[i] == '%' && i + 2 < value.size())
+      {
+        const int hi = hexValue(value[i + 1]);
+        const int lo = hexValue(value[i + 2]);
+        if (hi >= 0 && lo >= 0)
+        {
+          out.push_back(static_cast<char>((hi << 4) | lo));
+          i += 2;
+        }
+      }
+      else
+      {
+        out.push_back(static_cast<char>(value[i]));
+      }
+    }
+    return out;
+  }
+
+  std::string queryParam(const std::string &query, const std::string &key)
+  {
+    std::size_t start = 0;
+    while (start < query.size())
+    {
+      const auto amp = query.find('&', start);
+      const auto end = amp == std::string::npos ? query.size() : amp;
+      const auto eq = query.find('=', start);
+      const std::size_t nameEnd = eq == std::string::npos || eq > end ? end : eq;
+      if (urlDecode(std::string_view(query).substr(start, nameEnd - start)) == key)
+      {
+        if (eq == std::string::npos || eq > end)
+          return {};
+        return urlDecode(std::string_view(query).substr(eq + 1, end - eq - 1));
+      }
+      if (amp == std::string::npos)
+        break;
+      start = amp + 1;
+    }
+    return {};
   }
 
   std::unordered_map<std::string, std::string> readDotEnv(const std::filesystem::path &path)
@@ -435,6 +497,7 @@ namespace
     {
       http::response<http::string_body> res;
       std::string target(req_.target());
+      std::string query;
       if (target.size() > 2048)
       {
         res = makeResponse(req_, http::status::uri_too_long, "uri too long", "text/plain; charset=utf-8");
@@ -445,7 +508,12 @@ namespace
         return;
       }
       if (const auto queryPos = target.find('?'); queryPos != std::string::npos)
+      {
+        query = target.substr(queryPos + 1);
         target.resize(queryPos);
+      }
+      const std::string rawRoomFilter = queryParam(query, "room");
+      const std::string roomFilter = rawRoomFilter.empty() ? "" : arena::sanitizeRoomCode(rawRoomFilter);
 
       if (req_.method() != http::verb::get && req_.method() != http::verb::head)
       {
@@ -474,11 +542,11 @@ namespace
       }
       else if (target == "/api/leaderboard")
       {
-        res = makeResponse(req_, http::status::ok, game_.leaderboardJson().dump(), "application/json; charset=utf-8");
+        res = makeResponse(req_, http::status::ok, game_.leaderboardJson(roomFilter).dump(), "application/json; charset=utf-8");
       }
       else if (target == "/api/matches")
       {
-        res = makeResponse(req_, http::status::ok, game_.matchesJson().dump(), "application/json; charset=utf-8");
+        res = makeResponse(req_, http::status::ok, game_.matchesJson(roomFilter).dump(), "application/json; charset=utf-8");
       }
       else if (target == "/metrics")
       {

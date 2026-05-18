@@ -42,8 +42,8 @@ namespace arena
     [[nodiscard]] nlohmann::json stateJson() const;
     [[nodiscard]] nlohmann::json statsJson() const;
     [[nodiscard]] nlohmann::json roomsJson() const;
-    [[nodiscard]] nlohmann::json leaderboardJson() const;
-    [[nodiscard]] nlohmann::json matchesJson() const;
+    [[nodiscard]] nlohmann::json leaderboardJson(const std::string &roomCode = {}) const;
+    [[nodiscard]] nlohmann::json matchesJson(const std::string &roomCode = {}) const;
     [[nodiscard]] std::string metricsText() const;
 
     [[nodiscard]] int tickRateTarget() const noexcept { return tickRateTarget_; }
@@ -155,8 +155,8 @@ namespace arena
     void savePersistentStateLocked() const;
     void recordRoundLocked(RoomState &room, const std::string &roomCode);
     [[nodiscard]] MatchRecord matchRecordLocked(const RoomState &room, const std::string &endedAt, const std::string &roomCode) const;
-    [[nodiscard]] nlohmann::json leaderboardJsonLocked(std::size_t limit = 10) const;
-    [[nodiscard]] nlohmann::json matchesJsonLocked(std::size_t limit = 20) const;
+    [[nodiscard]] nlohmann::json leaderboardJsonLocked(std::size_t limit = 10, const std::string &roomCode = {}) const;
+    [[nodiscard]] nlohmann::json matchesJsonLocked(std::size_t limit = 20, const std::string &roomCode = {}) const;
     void handleOrbPickupsLocked(RoomState &room, const std::string &roomCode);
     void handlePowerupPickupsLocked(RoomState &room, const std::string &roomCode);
     void handleControlZoneLocked(RoomState &room, const std::string &roomCode, double dt);

@@ -10,5 +10,6 @@ namespace arena
 
   [[nodiscard]] std::string sanitizeDisplayName(const std::string &input);
   [[nodiscard]] std::string sanitizeChatMessage(const std::string &input);
+  [[nodiscard]] std::string sanitizeRoomCode(const std::string &input);
   [[nodiscard]] bool isTruthyBoolJsonCompatible(bool value);
 }
