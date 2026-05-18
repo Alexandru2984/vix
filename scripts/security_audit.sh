@@ -23,7 +23,11 @@ require_absent() {
   fi
 }
 
-git check-ignore -q .env || fail ".env is not ignored by git"
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git check-ignore -q .env || fail ".env is not ignored by git"
+else
+  rg -q '(^|/)\.env($|[[:space:]])' .gitignore || fail ".env is not listed in .gitignore"
+fi
 
 if [[ -f .env ]]; then
   mode="$(stat -c '%a' .env)"

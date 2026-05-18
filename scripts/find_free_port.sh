@@ -10,8 +10,33 @@ if ! [[ "$start" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+is_listening() {
+  local port="$1"
+
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn "sport = :$port" | grep -q .
+    return
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$host" "$port" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.settimeout(0.2)
+    sys.exit(0 if sock.connect_ex((host, port)) == 0 else 1)
+PY
+    return
+  fi
+
+  (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1
+}
+
 for ((port=start; port<start+limit; port++)); do
-  if ! ss -H -ltn "sport = :$port" | grep -q .; then
+  if ! is_listening "$port"; then
     echo "$port"
     exit 0
   fi

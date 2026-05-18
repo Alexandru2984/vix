@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build}"
 APP_HOST="${APP_HOST:-127.0.0.1}"
 APP_PORT="${APP_PORT:-$("${ROOT_DIR}/scripts/find_free_port.sh" 18080 "${APP_HOST}")}"
+PUBLIC_URL="${PUBLIC_URL:-http://${APP_HOST}:${APP_PORT}}"
+ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-http://${APP_HOST}:${APP_PORT}}"
+ALLOW_MISSING_ORIGIN="${ALLOW_MISSING_ORIGIN:-false}"
+DATABASE_URL="${DATABASE_URL:-}"
 
 if [[ "${BUILD_DIR}" != /* ]]; then
   BUILD_DIR="${ROOT_DIR}/${BUILD_DIR}"
@@ -35,7 +39,14 @@ trap cleanup EXIT
 
 (
   cd "${ROOT_DIR}"
-  APP_HOST="${APP_HOST}" APP_PORT="${APP_PORT}" DATA_DIR="${DATA_DIR}" "${BINARY}"
+  APP_HOST="${APP_HOST}" \
+    APP_PORT="${APP_PORT}" \
+    PUBLIC_URL="${PUBLIC_URL}" \
+    ALLOWED_ORIGINS="${ALLOWED_ORIGINS}" \
+    ALLOW_MISSING_ORIGIN="${ALLOW_MISSING_ORIGIN}" \
+    DATABASE_URL="${DATABASE_URL}" \
+    DATA_DIR="${DATA_DIR}" \
+    "${BINARY}"
 ) >"${LOG_FILE}" 2>&1 &
 PID="$!"
 

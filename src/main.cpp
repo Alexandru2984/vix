@@ -239,7 +239,7 @@ namespace
                         const char *key,
                         const std::string &fallback)
   {
-    if (const char *fromEnv = std::getenv(key); fromEnv && *fromEnv)
+    if (const char *fromEnv = std::getenv(key); fromEnv)
       return fromEnv;
     auto it = fileEnv.find(key);
     return it == fileEnv.end() || it->second.empty() ? fallback : it->second;

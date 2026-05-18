@@ -171,8 +171,8 @@ ORDER BY wins DESC, best_score DESC, total_score DESC, name ASC
 LIMIT $1
 )sql";
       const auto rows = roomCode.empty()
-                            ? tx.exec(sql, pqxx::params{limitString(limit, 10)})
-                            : tx.exec(sql, pqxx::params{limitString(limit, 10), roomCode});
+                            ? tx.exec_params(sql, limitString(limit, 10))
+                            : tx.exec_params(sql, limitString(limit, 10), roomCode);
 
       std::size_t rank = 1;
       for (const auto &row : rows)
@@ -241,8 +241,8 @@ ORDER BY ended_at DESC, id DESC
 LIMIT $1
 )sql";
       const auto rows = roomCode.empty()
-                            ? tx.exec(sql, pqxx::params{limitString(limit, matchHistoryLimit_)})
-                            : tx.exec(sql, pqxx::params{limitString(limit, matchHistoryLimit_), roomCode});
+                            ? tx.exec_params(sql, limitString(limit, matchHistoryLimit_))
+                            : tx.exec_params(sql, limitString(limit, matchHistoryLimit_), roomCode);
 
       for (const auto &row : rows)
       {
@@ -312,17 +312,18 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
     for (const auto &[version, path] : migrations)
     {
-      const auto existing = tx.exec(
+      const auto existing = tx.exec_params(
           "SELECT 1 FROM schema_migrations WHERE version = $1",
-          pqxx::params{version});
+          version);
       if (!existing.empty())
       {
         continue;
       }
       tx.exec(readTextFile(path));
-      tx.exec(
+      tx.exec_params(
           "INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
-          pqxx::params{version, path.filename().string()});
+          version,
+          path.filename().string());
     }
 
     const auto current = tx.exec("SELECT coalesce(max(version), 0) FROM schema_migrations");
@@ -375,7 +376,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
     pqxx::connection connection(databaseUrl_);
     pqxx::work tx(connection);
-    const auto inserted = tx.exec(
+    const auto inserted = tx.exec_params(
         R"sql(
 INSERT INTO vix_matches (
   room_code, round_number, ended_at, winner_id, winner_name, winner_score, duration_seconds,
@@ -383,19 +384,18 @@ INSERT INTO vix_matches (
 ) VALUES ($1, $2, $3::timestamptz, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
 RETURNING id
 )sql",
-        pqxx::params{
-            record.roomCode,
-            record.round,
-            record.endedAt,
-            record.winnerId,
-            record.winnerName,
-            record.winnerScore,
-            record.durationSeconds,
-            humanPlayers,
-            botPlayers,
-            humanPlayers + botPlayers,
-            static_cast<int>(record.participants.size()),
-            participantsJson(record).dump()});
+        record.roomCode,
+        record.round,
+        record.endedAt,
+        record.winnerId,
+        record.winnerName,
+        record.winnerScore,
+        record.durationSeconds,
+        humanPlayers,
+        botPlayers,
+        humanPlayers + botPlayers,
+        static_cast<int>(record.participants.size()),
+        participantsJson(record).dump());
 
     if (inserted.empty())
     {
@@ -405,28 +405,27 @@ RETURNING id
 
     for (const auto &participant : record.participants)
     {
-      tx.exec(
+      tx.exec_params(
           R"sql(
 INSERT INTO vix_match_players (
   match_id, room_code, round_number, ended_at, player_id, name, is_bot, is_winner,
   score, orb_pickups, powerups, quests, control_zone_points, abilities_used
 ) VALUES ($1, $2, $3, $4::timestamptz, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 )sql",
-          pqxx::params{
-              matchId,
-              record.roomCode,
-              record.round,
-              record.endedAt,
-              participant.id,
-              participant.name,
-              participant.bot,
-              participant.winner,
-              participant.score,
-              participant.orbPickups,
-              participant.powerups,
-              participant.quests,
-              participant.controlZonePoints,
-              participant.abilitiesUsed});
+          matchId,
+          record.roomCode,
+          record.round,
+          record.endedAt,
+          participant.id,
+          participant.name,
+          participant.bot,
+          participant.winner,
+          participant.score,
+          participant.orbPickups,
+          participant.powerups,
+          participant.quests,
+          participant.controlZonePoints,
+          participant.abilitiesUsed);
     }
 
     tx.commit();
