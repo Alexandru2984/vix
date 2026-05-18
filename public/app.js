@@ -13,6 +13,14 @@
   const snapshotRateEl = document.getElementById("snapshotRate");
   const effectsBtn = document.getElementById("effectsBtn");
   const statsLink = document.getElementById("statsLink");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsPanel = document.getElementById("settingsPanel");
+  const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+  const settingsSoundBtn = document.getElementById("settingsSoundBtn");
+  const settingsEffectsBtn = document.getElementById("settingsEffectsBtn");
+  const settingsCopyRoomBtn = document.getElementById("settingsCopyRoomBtn");
+  const settingsStatsLink = document.getElementById("settingsStatsLink");
+  const settingsRoomLabel = document.getElementById("settingsRoomLabel");
   const joinPanel = document.getElementById("joinPanel");
   const nameInput = document.getElementById("nameInput");
   const roomInput = document.getElementById("roomInput");
@@ -226,7 +234,10 @@
   function updateStatsLink() {
     if (!statsLink) return;
     const room = sanitizeRoom(roomInput?.value || state.room || "public");
-    statsLink.href = room === "public" ? "/stats" : `/stats?room=${encodeURIComponent(room)}`;
+    const href = room === "public" ? "/stats" : `/stats?room=${encodeURIComponent(room)}`;
+    statsLink.href = href;
+    if (settingsStatsLink) settingsStatsLink.href = href;
+    if (settingsRoomLabel) settingsRoomLabel.textContent = `Room ${room}`;
   }
 
   function selectedRoom() {
@@ -449,6 +460,36 @@
   function updateEffectsButton() {
     effectsBtn.textContent = state.reducedEffects ? "FX low" : "FX on";
     effectsBtn.setAttribute("aria-pressed", String(!state.reducedEffects));
+    settingsEffectsBtn.textContent = state.reducedEffects ? "FX low" : "FX on";
+    settingsEffectsBtn.setAttribute("aria-pressed", String(!state.reducedEffects));
+  }
+
+  function updateSoundButtons() {
+    soundBtn.textContent = state.soundEnabled ? "Sound on" : "Sound off";
+    soundBtn.classList.toggle("ready", state.soundEnabled);
+    settingsSoundBtn.textContent = state.soundEnabled ? "Sound on" : "Sound off";
+    settingsSoundBtn.setAttribute("aria-pressed", String(state.soundEnabled));
+  }
+
+  function setSettingsOpen(open) {
+    settingsPanel.classList.toggle("hidden", !open);
+    settingsBtn.setAttribute("aria-expanded", String(open));
+    if (open) {
+      document.body.classList.add("show-panels");
+      updateStatsLink();
+      updateSoundButtons();
+      updateEffectsButton();
+    }
+  }
+
+  async function copyCurrentRoomLink() {
+    haptic(8);
+    try {
+      await navigator.clipboard.writeText(roomLink());
+      appendSystem("Room link copied");
+    } catch {
+      appendSystem(roomLink());
+    }
   }
 
   function mergeById(current, upserts, removedIds) {
@@ -563,8 +604,7 @@
     setAbilityButton(dashBtn, dashState, 0, abilities.dashCooldownMs || 0);
     setAbilityButton(shieldBtn, shieldState, abilities.shieldMs || 0, abilities.shieldCooldownMs || 0);
     setAbilityButton(magnetBtn, magnetState, abilities.magnetMs || 0, abilities.magnetCooldownMs || 0);
-    soundBtn.textContent = state.soundEnabled ? "Sound on" : "Sound off";
-    soundBtn.classList.toggle("ready", state.soundEnabled);
+    updateSoundButtons();
   }
 
   function ensureAudio() {
@@ -951,7 +991,13 @@
           document.body.classList.remove("show-chat", "chat-focused");
           settleViewport();
         }
+        setSettingsOpen(false);
       }
+      return;
+    }
+    if (event.key === "Escape" && !settingsPanel.classList.contains("hidden")) {
+      event.preventDefault();
+      setSettingsOpen(false);
       return;
     }
     if (event.key === "Enter") {
@@ -1053,13 +1099,7 @@
     updateStatsLink();
     renderRoomDirectory();
     scheduleLeaderboardPreview();
-    haptic(8);
-    try {
-      await navigator.clipboard.writeText(roomLink());
-      appendSystem("Room link copied");
-    } catch {
-      appendSystem(roomLink());
-    }
+    await copyCurrentRoomLink();
   });
   newRoomBtn?.addEventListener("click", () => {
     roomInput.value = generateRoomCode();
@@ -1091,6 +1131,7 @@
     }
     updateAbilityHud(state.players.get(state.localId));
   });
+  settingsSoundBtn.addEventListener("click", () => soundBtn.click());
   effectsBtn.addEventListener("click", () => {
     haptic(6);
     state.reducedEffects = !state.reducedEffects;
@@ -1101,6 +1142,16 @@
       state.trails = [];
     }
     updateEffectsButton();
+  });
+  settingsEffectsBtn.addEventListener("click", () => effectsBtn.click());
+  settingsCopyRoomBtn.addEventListener("click", copyCurrentRoomLink);
+  settingsBtn.addEventListener("click", () => {
+    haptic(6);
+    setSettingsOpen(settingsPanel.classList.contains("hidden"));
+  });
+  settingsCloseBtn.addEventListener("click", () => {
+    haptic(6);
+    setSettingsOpen(false);
   });
   roundSummaryClose?.addEventListener("click", () => {
     state.dismissedRoundSummaryKey = roundSummaryKey();
@@ -1150,6 +1201,7 @@
   mobileInfoBtn.addEventListener("click", () => {
     haptic(8);
     document.body.classList.toggle("show-panels");
+    setSettingsOpen(settingsPanel.classList.contains("hidden"));
   });
 
   function updateRenderPlayers() {
@@ -1522,6 +1574,8 @@
   connect();
   updateStatsLink();
   updateEffectsButton();
+  updateSoundButtons();
+  setSettingsOpen(false);
   renderRoomDirectory();
   refreshRooms();
   renderLeaderboardPreview();

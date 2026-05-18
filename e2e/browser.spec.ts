@@ -37,6 +37,26 @@ test("client performance HUD reports realtime render and network rates", async (
   await expect(page.locator("#effectsBtn")).toHaveAttribute("aria-pressed", "false");
 });
 
+test("settings drawer controls sound effects and links", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only settings drawer check");
+
+  await joinArena(page, "Settings");
+  await page.locator("#settingsBtn").click();
+  await expect(page.locator("#settingsPanel")).toBeVisible();
+  await expect(page.locator("#settingsBtn")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#settingsStatsLink")).toHaveAttribute("href", /\/stats/);
+  await expect(page.locator("#settingsRoomLabel")).toContainText("Room");
+
+  await page.locator("#settingsEffectsBtn").click();
+  await expect(page.locator("#effectsBtn")).toHaveText("FX low");
+  await page.locator("#settingsSoundBtn").click();
+  await expect(page.locator("#settingsSoundBtn")).toHaveAttribute("aria-pressed", "true");
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#settingsPanel")).toBeHidden();
+  await expect(page.locator("#settingsBtn")).toHaveAttribute("aria-expanded", "false");
+});
+
 test("join panel supports room discovery and private room generation", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#roomList")).toBeVisible();

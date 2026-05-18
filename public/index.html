@@ -76,6 +76,7 @@
           <button class="ping-button" type="button" data-ping="Control zone!">Zone</button>
           <button class="ping-button" type="button" data-ping="Orbs here!">Orbs</button>
           <button class="ping-button" type="button" data-ping="Need help!">Help</button>
+          <button id="settingsBtn" class="ping-button" type="button" aria-expanded="false">Settings</button>
         </section>
 
         <section id="joinPanel" class="join-panel" aria-labelledby="joinTitle">
@@ -140,8 +141,22 @@
           <input id="chatInput" maxlength="220" placeholder="Message">
         </section>
 
+        <section id="settingsPanel" class="settings-panel hidden" aria-labelledby="settingsTitle">
+          <div class="settings-head">
+            <h2 id="settingsTitle">Arena settings</h2>
+            <button id="settingsCloseBtn" class="small-button" type="button">Close</button>
+          </div>
+          <div class="settings-grid">
+            <button id="settingsSoundBtn" type="button">Sound off</button>
+            <button id="settingsEffectsBtn" type="button">FX on</button>
+            <button id="settingsCopyRoomBtn" type="button">Copy room link</button>
+            <a id="settingsStatsLink" href="/stats">Open stats</a>
+          </div>
+          <p id="settingsRoomLabel">Room public</p>
+        </section>
+
         <nav class="mobile-actions" aria-label="Touch controls">
-          <button id="mobileInfoBtn" class="mobile-action" type="button" aria-label="Toggle arena panels">i</button>
+          <button id="mobileInfoBtn" class="mobile-action" type="button" aria-label="Open arena settings">i</button>
           <button id="mobileChatBtn" class="mobile-action" type="button" aria-label="Open chat">
             <span id="mobileChatBadge" class="mobile-badge hidden">0</span>
             ✦
