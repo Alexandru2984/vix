@@ -1,0 +1,44 @@
+{
+  "name": "VixArena",
+  "short_name": "VixArena",
+  "description": "Real-time C++ multiplayer arena with canvas gameplay, WebSocket state sync, rooms, bots, and chat.",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "orientation": "any",
+  "categories": ["games", "entertainment", "developer"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open public arena",
+      "short_name": "Public",
+      "description": "Join the public VixArena room.",
+      "url": "/?room=public",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Stats",
+      "short_name": "Stats",
+      "description": "View live arena stats and leaderboard.",
+      "url": "/stats",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

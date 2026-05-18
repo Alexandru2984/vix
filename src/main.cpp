@@ -420,6 +420,8 @@ namespace
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
+            "worker-src 'self'; "
+            "manifest-src 'self'; "
             "base-uri 'self'; "
             "frame-ancestors 'none'");
     res.keep_alive(req.keep_alive());
@@ -788,7 +790,7 @@ namespace
       }
 
       res = makeResponse(req_, http::status::ok, std::move(body), mimeType(path));
-      res.set(http::field::cache_control, target == "/" || target == "/docs" || target == "/stats" ? "no-store" : "public, max-age=300");
+      res.set(http::field::cache_control, target == "/" || target == "/docs" || target == "/stats" || target == "/sw.js" || target == "/manifest.json" ? "no-store" : "public, max-age=300");
     }
 
     void onWrite(beast::error_code ec, bool closeAfter)

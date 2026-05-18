@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="VixArena API, WebSocket protocol, controls, security limits, and deployment notes.">
+    <meta name="theme-color" content="#090b10">
     <title>VixArena Docs</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css?v=mobile-hardening-20260518">
     <style>
       body { height: auto; min-height: 100%; overflow: visible; position: static; inset: auto; }
@@ -20,7 +24,7 @@
   <body>
     <main class="doc">
       <h1>VixArena</h1>
-      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with an objective HUD, minimap, edge target markers, score popups, quick pings, sound toggle, and touch controls.</p>
+      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with PWA metadata, an objective HUD, minimap, edge target markers, score popups, quick pings, sound toggle, and touch controls.</p>
 
       <h2>Controls</h2>
       <ul>
@@ -53,6 +57,7 @@
         <li><code>GET /metrics</code> Prometheus text metrics with player counts, HTTP response/rate-limit counters, WebSocket traffic, tick durations, rejected messages, pickups, quests, rounds, and PostgreSQL write health. Production Nginx allows it only from localhost.</li>
         <li><code>GET /stats</code> public stats page with runtime counters, leaderboard, and match history.</li>
         <li><code>GET /docs</code> this page.</li>
+        <li><code>GET /manifest.json</code>, <code>GET /sw.js</code>, and <code>GET /icons/icon.svg</code> installable PWA metadata and static shell cache assets. The service worker bypasses live API, metrics, health, readiness, and WebSocket endpoints.</li>
       </ul>
 
       <h2>WebSocket</h2>
@@ -100,7 +105,7 @@
         <li>Private rooms are invite-by-link room codes, not password-protected rooms.</li>
         <li>No accounts or anti-abuse identity layer.</li>
         <li>Snapshot deltas are JSON deltas rather than binary packets.</li>
-        <li>Mobile support is still v1-level; richer gesture controls and installable PWA behavior are TODOs.</li>
+        <li>PWA support is intentionally conservative: it caches static shell assets, not live gameplay data or API responses.</li>
       </ul>
     </main>
   </body>

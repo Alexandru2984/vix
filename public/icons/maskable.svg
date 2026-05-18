@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VixArena maskable icon">
+  <rect width="512" height="512" fill="#090b10"/>
+  <circle cx="256" cy="256" r="214" fill="#10151b" stroke="#2a3544" stroke-width="12"/>
+  <path d="M126 184h260M126 256h260M126 328h260M184 126v260M256 126v260M328 126v260" stroke="#1d2a35" stroke-width="7"/>
+  <circle cx="206" cy="238" r="42" fill="#66ccff"/>
+  <circle cx="316" cy="290" r="38" fill="#7af59b"/>
+  <circle cx="366" cy="180" r="20" fill="#ffcc66"/>
+  <path d="M184 406h144" stroke="#66ccff" stroke-width="18" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VixArena icon">
+  <rect width="512" height="512" rx="96" fill="#090b10"/>
+  <path d="M80 130h352v252H80z" fill="#10151b" stroke="#2a3544" stroke-width="10"/>
+  <path d="M80 214h352M80 298h352M168 130v252M256 130v252M344 130v252" stroke="#1d2a35" stroke-width="6"/>
+  <circle cx="188" cy="246" r="38" fill="#66ccff"/>
+  <circle cx="322" cy="286" r="34" fill="#7af59b"/>
+  <circle cx="370" cy="178" r="18" fill="#ffcc66"/>
+  <circle cx="132" cy="344" r="16" fill="#c9a7ff"/>
+  <path d="M169 408h174" stroke="#66ccff" stroke-width="18" stroke-linecap="round"/>
+</svg>

@@ -100,7 +100,7 @@ The current unit tests cover text validation, world bounds/collision/spawn behav
 
 GitHub Actions workflows live in `.github/workflows/`.
 
-- `CI`: installs system dependencies and Node dependencies, builds Release with Ninja, runs CTest, starts temporary localhost servers, verifies HTTP endpoints, metrics, security headers, WebSocket Origin handling, browser E2E, responsive/mobile layout, accessibility, and a short WebSocket load smoke test.
+- `CI`: installs system dependencies and Node dependencies, builds Release with Ninja, runs CTest, starts temporary localhost servers, verifies HTTP endpoints, metrics, security headers, WebSocket Origin handling, browser E2E, responsive/mobile layout, accessibility, PWA metadata/service-worker behavior, and a short WebSocket load smoke test.
 - `CodeQL`: builds the C++ application and runs GitHub CodeQL analysis on pushes, pull requests, weekly schedule, and manual dispatch.
 
 Dependabot is configured for weekly GitHub Actions updates in `.github/dependabot.yml`.
@@ -134,6 +134,7 @@ DATABASE_URL=postgresql:///vix_arena
 - Bots fill the arena for solo play when humans are connected.
 - Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, objective markers, and score feedback.
 - Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, and connection metrics.
+- PWA metadata, app icons, and a conservative service worker for static assets without caching live API/WebSocket traffic.
 - PostgreSQL-backed leaderboard and recent match history, with JSON-on-disk fallback.
 - Public stats page for runtime counters, leaderboard, and recent matches.
 - HTTP endpoints for health, public state, runtime stats, leaderboard, match history, docs, and static frontend files.
@@ -148,6 +149,7 @@ DATABASE_URL=postgresql:///vix_arena
 - libpqxx
 - CMake
 - Browser canvas frontend
+- Playwright browser E2E, accessibility, responsive, PWA, and WebSocket load checks
 - systemd service
 - Nginx reverse proxy
 - Certbot TLS
@@ -297,7 +299,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 ## Current Limitations
 
 - Private rooms are invite-by-link room codes, not password-protected rooms.
-- CI is active for build, smoke, security audit, browser E2E, responsive/mobile checks, accessibility, load smoke, and CodeQL.
+- CI is active for build, smoke, security audit, browser E2E, responsive/mobile checks, accessibility, PWA checks, load smoke, and CodeQL.
 - PostgreSQL persistence tracks completed rounds and participant stats, not full accounts or long-term player identity.
 - No binary protocol yet.
 - Horizontal scaling would require external state or pub/sub.
