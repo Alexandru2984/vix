@@ -534,7 +534,7 @@ namespace
       }
       else if (target == "/api/stats")
       {
-        res = makeResponse(req_, http::status::ok, game_.statsJson().dump(), "application/json; charset=utf-8");
+        res = makeResponse(req_, http::status::ok, game_.statsJson(roomFilter).dump(), "application/json; charset=utf-8");
       }
       else if (target == "/api/rooms")
       {

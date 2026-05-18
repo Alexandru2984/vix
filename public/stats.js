@@ -47,7 +47,8 @@ function setUrlRoom(room) {
 
 function renderStats(stats) {
   text("statPlayers", stats.connectedPlayers ?? 0);
-  text("statHumans", `${stats.humanPlayers ?? 0} humans, ${stats.botPlayers ?? 0} bots`);
+  const scope = stats.room ? `room ${stats.room}` : "all rooms";
+  text("statHumans", `${stats.humanPlayers ?? 0} humans, ${stats.botPlayers ?? 0} bots · ${scope}`);
   text("statRounds", stats.totalRoundsCompletedSinceStart ?? 0);
   text("statRoundNumber", `round ${stats.roundNumber ?? 1}`);
   text("statMessages", stats.websocket?.messagesReceived ?? 0);
@@ -136,7 +137,7 @@ function renderMatches(data) {
 async function refresh() {
   try {
     const [stats, leaderboard, matches] = await Promise.all([
-      getJson("/api/stats"),
+      getJson(`/api/stats${roomQuery()}`),
       getJson(`/api/leaderboard${roomQuery()}`),
       getJson(`/api/matches${roomQuery()}`),
     ]);

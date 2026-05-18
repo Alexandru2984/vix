@@ -311,6 +311,11 @@ namespace
     const auto publicState = server.stateJson();
     requireEq(publicState.value("room", ""), std::string("public"), "default state should remain public room");
     requireEq(publicState.value("humans", 0), 0, "default state should not count private room humans");
+    const auto alphaStats = server.statsJson("alpha-room");
+    requireEq(alphaStats.value("scope", ""), std::string("room"), "room stats should report room scope");
+    requireEq(alphaStats.value("room", ""), std::string("alpha-room"), "room stats should echo requested room");
+    requireEq(alphaStats.value("humanPlayers", 0), 1, "room stats should count only requested room humans");
+    require(alphaStats.value("globalHumanPlayers", 0) >= 2, "room stats should keep global player counters visible");
 
     const std::size_t beforeBravoMessages = bravo.messages.size();
     server.onMessage(alpha.connection.get(), R"({"type":"chat","message":"alpha only"})");

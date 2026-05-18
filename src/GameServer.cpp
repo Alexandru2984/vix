@@ -2246,20 +2246,30 @@ namespace arena
         {"events", eventsJsonLocked(roomRef)}};
   }
 
-  nlohmann::json GameServer::statsJson() const
+  nlohmann::json GameServer::statsJson(const std::string &roomCode) const
   {
+    const std::string roomCodeNormalized = roomCode.empty() ? "" : sanitizeRoomCode(roomCode);
+    const bool roomScoped = !roomCodeNormalized.empty();
     std::vector<std::uint64_t> tickSamples;
     tickSamples.reserve(tickDurationSampleLimit_);
     const PersistenceStatus persistenceStatus = persistence_ ? persistence_->status() : PersistenceStatus{};
     std::lock_guard<std::mutex> lock(mutex_);
     tickSamples.assign(recentTickDurationsUs_.begin(), recentTickDurationsUs_.end());
-    const RoomState *publicRoom = roomStateLocked("public");
-    const std::uint64_t publicRoundNumber = publicRoom ? publicRoom->roundNumber : 1;
+    const RoomState *room = roomStateLocked(roomScoped ? roomCodeNormalized : "public");
+    const std::uint64_t roundNumber = room ? room->roundNumber : 1;
+    const std::size_t humanPlayers = roomScoped ? humanCountLocked(roomCodeNormalized) : humanCountLocked();
+    const std::size_t botPlayers = roomScoped ? botCountLocked(roomCodeNormalized) : botCountLocked();
+    const std::size_t connectedPlayers = roomScoped ? humanPlayers + botPlayers : players_.size();
     return {
         {"service", "vix-arena"},
-        {"connectedPlayers", players_.size()},
-        {"humanPlayers", humanCountLocked()},
-        {"botPlayers", botCountLocked()},
+        {"scope", roomScoped ? "room" : "global"},
+        {"room", roomScoped ? nlohmann::json(roomCodeNormalized) : nlohmann::json(nullptr)},
+        {"connectedPlayers", connectedPlayers},
+        {"humanPlayers", humanPlayers},
+        {"botPlayers", botPlayers},
+        {"globalConnectedPlayers", players_.size()},
+        {"globalHumanPlayers", humanCountLocked()},
+        {"globalBotPlayers", botCountLocked()},
         {"maxPlayers", maxPlayers_},
         {"uptimeSeconds", uptimeSeconds(startedAt_)},
         {"tickRateTarget", tickRateTarget_},
@@ -2270,7 +2280,7 @@ namespace arena
         {"totalControlZonePointsSinceStart", totalControlZonePoints_},
         {"totalPowerupsSinceStart", totalPowerupsSinceStart_},
         {"totalQuestsCompletedSinceStart", totalQuestsCompleted_},
-        {"roundNumber", publicRoundNumber},
+        {"roundNumber", roundNumber},
         {"totalRoundsCompletedSinceStart", totalRoundsCompleted_},
         {"persistence", {
                             {"enabled", !stateFile_.empty() || persistenceStatus.enabled},
