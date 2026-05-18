@@ -1,7 +1,7 @@
 {
   "name": "VixArena",
   "short_name": "VixArena",
-  "description": "Real-time C++ multiplayer arena with canvas gameplay, WebSocket state sync, rooms, bots, and chat.",
+  "description": "Real-time C++ multiplayer arena with canvas gameplay, WebSocket state sync, rooms, bots, hazards, and chat.",
   "id": "/?source=pwa",
   "start_url": "/?source=pwa",
   "scope": "/",

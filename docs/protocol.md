@@ -65,6 +65,9 @@ The first state update after join is always a full snapshot:
   "players": [],
   "orbs": [],
   "powerups": [],
+  "hazards": [
+    {"id":"h-1","x":520,"y":760,"radius":46,"penaltyPerSecond":3,"color":"#ff5c8a"}
+  ],
   "controlZone": {"x":1000,"y":600,"radius":150,"pointsPerSecond":2},
   "round": {"number":1,"phase":"active","secondsRemaining":180},
   "events": []
@@ -90,12 +93,14 @@ Clients that negotiated `snapshot_delta` receive deltas after their first full s
   "removedOrbs": [],
   "powerups": [],
   "removedPowerups": [],
+  "hazards": [],
+  "removedHazards": [],
   "events": [],
   "removedEvents": []
 }
 ```
 
-Delta arrays contain full replacement objects for changed or new entities. Removed arrays contain entity IDs. `round` and `controlZone` are included only when changed.
+Delta arrays contain full replacement objects for changed or new entities. Removed arrays contain entity IDs. `round` and `controlZone` are included only when changed. Hazards are server-authored danger zones; clients should render them but never decide score damage locally.
 
 If a delta would be larger than the full snapshot, the server sends a full snapshot instead and resets that client's baseline.
 

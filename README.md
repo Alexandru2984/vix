@@ -128,11 +128,11 @@ DATABASE_URL=postgresql:///vix_arena
 
 ## Features
 
-- Server-authoritative movement, bounds, obstacles, scoring, pickups, powerups, and abilities.
+- Server-authoritative movement, bounds, obstacles, scoring, pickups, powerups, hazards, and abilities.
 - 20 ticks/sec authoritative game loop.
 - WebSocket protocol for join, input, abilities, chat, ping/pong, and snapshots.
 - Bots fill the arena for solo play when humans are connected.
-- Contested control zone, Orb Run mini quest, leaderboard, lobby leaderboard preview, round summary overlay, minimap, event feed, room browser, objective markers, and score feedback.
+- Contested control zone, danger zones, Orb Run mini quest, leaderboard, lobby leaderboard preview, round summary overlay, minimap, event feed, room browser, objective markers, and score feedback.
 - Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, settings drawer, HUD, FPS/snapshot-rate indicators, and connection metrics.
 - Reduced-effects mode for lower-motion or lower-power clients.
 - PWA metadata, app icons, and a conservative service worker for static assets without caching live API/WebSocket traffic.
@@ -195,8 +195,8 @@ Server messages:
 
 ```json
 {"type":"welcome","protocolVersion":2,"serverTimeMs":1779035000000,"id":"p-1","room":"duel-room","features":["snapshot_delta"],"world":{"width":2000,"height":1200,"obstacles":[]}}
-{"type":"snapshot","protocolVersion":2,"snapshotId":1,"baseSnapshotId":null,"tick":1,"full":true,"serverTimeMs":1779035000050,"players":[],"orbs":[],"powerups":[],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[]}
-{"type":"snapshot_delta","protocolVersion":2,"snapshotId":2,"baseSnapshotId":1,"tick":2,"full":false,"serverTimeMs":1779035000100,"players":[],"removedPlayers":[],"orbs":[],"removedOrbs":[],"powerups":[],"removedPowerups":[],"events":[],"removedEvents":[]}
+{"type":"snapshot","protocolVersion":2,"snapshotId":1,"baseSnapshotId":null,"tick":1,"full":true,"serverTimeMs":1779035000050,"players":[],"orbs":[],"powerups":[],"hazards":[{"id":"h-1","x":520,"y":760,"radius":46,"penaltyPerSecond":3,"color":"#ff5c8a"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[]}
+{"type":"snapshot_delta","protocolVersion":2,"snapshotId":2,"baseSnapshotId":1,"tick":2,"full":false,"serverTimeMs":1779035000100,"players":[],"removedPlayers":[],"orbs":[],"removedOrbs":[],"powerups":[],"removedPowerups":[],"hazards":[],"removedHazards":[],"events":[],"removedEvents":[]}
 {"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}
 {"type":"player_joined","id":"p-1","name":"Micu"}
 {"type":"player_left","id":"p-1"}
@@ -207,7 +207,7 @@ Server messages:
 
 - `GET /health`: service status, player counts, uptime.
 - `GET /ready`: readiness status, including PostgreSQL configuration and schema version. In production Nginx allows this endpoint only from localhost.
-- `GET /api/state`: public game state, world metadata, pickups, round, events. Add `?room=duel-room` when you already know a room code and want that room's live state.
+- `GET /api/state`: public game state, world metadata, pickups, hazards, round, events. Add `?room=duel-room` when you already know a room code and want that room's live state.
 - `GET /api/stats`: operational counters. Add `?room=duel-room` for live player/round counts scoped to a known room while keeping process-level counters visible.
 - `GET /api/rooms`: active room summary used by the lobby room browser. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.
 - `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Add `?room=duel-room` for a room-scoped board. Uses PostgreSQL when enabled.
@@ -235,7 +235,7 @@ Current metrics include:
 - full snapshots, delta snapshots, and snapshot bytes sent
 - rejected messages, rate-limit rejections, and send failures
 - authoritative tick count and recent tick duration p50/p95/p99/max
-- accepted chat messages, pickups, quests, rounds, and control-zone points
+- accepted chat messages, pickups, quests, rounds, control-zone points, and hazard damage
 - persistent leaderboard and match history entry counts
 - PostgreSQL configured/enabled status, schema version, queued writes, saved matches, and failed writes
 
@@ -286,6 +286,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 - Repeated invalid WebSocket protocol messages close the connection.
 - Dynamic HTTP endpoints use a lightweight per-client token bucket rate limit.
 - Per-client WebSocket outboxes are capped to avoid unbounded memory growth.
+- Danger-zone damage is computed server-side and shield immunity is enforced server-side.
 - The app handles `SIGTERM`/`SIGINT` for graceful shutdown under a hardened systemd unit with no Linux capabilities, `NoNewPrivileges`, `ProtectSystem=strict`, namespace restrictions, syscall filtering, hidden process visibility, and write access limited to `/home/micu/vix/data`.
 - HTTP responses include baseline security headers: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`.
 - Display names and chat messages are length-limited and cleaned of control characters.

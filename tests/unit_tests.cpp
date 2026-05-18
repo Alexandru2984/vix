@@ -192,6 +192,8 @@ namespace
     require(initialSnapshot != nullptr && initialSnapshot->value("full", false), "initial snapshot should be full");
     require(initialSnapshot != nullptr && initialSnapshot->value("snapshotId", 0) > 0, "snapshot should have id");
     require(initialSnapshot != nullptr && initialSnapshot->value("tick", -1) >= 0, "snapshot should have tick");
+    require(initialSnapshot != nullptr && initialSnapshot->contains("hazards"), "snapshot should expose hazards");
+    require(initialSnapshot != nullptr && initialSnapshot->at("hazards").is_array(), "hazards should be an array");
 
     const auto health = server.healthJson();
     requireEq(health.value("humans", 0), 1, "one human should be joined");
@@ -228,6 +230,7 @@ namespace
     const auto stats = server.statsJson();
     require(stats.contains("websocket"), "stats should expose websocket counters");
     require(stats.contains("tickDurationUs"), "stats should expose tick durations");
+    require(stats.contains("totalHazardDamageSinceStart"), "stats should expose hazard damage counter");
     require(stats.at("websocket").value("messagesReceived", 0) >= 3, "stats should count received messages");
     require(stats.at("websocket").value("rejectedMessages", 0) >= 1, "stats should count rejected messages");
     require(stats.at("websocket").value("rateLimitRejects", 0) >= 1, "stats should count rate limit rejects");
@@ -237,6 +240,7 @@ namespace
     require(metrics.find("vix_arena_up 1") != std::string::npos, "metrics should include up gauge");
     require(metrics.find("vix_arena_ws_messages_received_total") != std::string::npos, "metrics should include websocket counters");
     require(metrics.find("vix_arena_tick_duration_microseconds_p95") != std::string::npos, "metrics should include tick duration gauges");
+    require(metrics.find("vix_arena_hazard_damage_total") != std::string::npos, "metrics should include hazard damage counter");
   }
 
   void gameServerLimitsConnectionAndProtocolAbuse()
@@ -308,6 +312,7 @@ namespace
     const auto alphaState = server.stateJson("alpha-room");
     requireEq(alphaState.value("room", ""), std::string("alpha-room"), "room state should echo requested room");
     requireEq(alphaState.value("humans", 0), 1, "room state should count only requested room humans");
+    require(alphaState.contains("hazards") && alphaState.at("hazards").is_array(), "room state should expose hazards");
     const auto publicState = server.stateJson();
     requireEq(publicState.value("room", ""), std::string("public"), "default state should remain public room");
     requireEq(publicState.value("humans", 0), 0, "default state should not count private room humans");

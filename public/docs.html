@@ -8,7 +8,7 @@
     <title>VixArena Docs</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/styles.css?v=mobile-hardening-20260518">
+    <link rel="stylesheet" href="/styles.css?v=hazards-20260518">
     <style>
       body { height: auto; min-height: 100%; overflow: visible; position: static; inset: auto; }
       .doc { max-width: 980px; margin: 0 auto; padding: 34px 18px 70px; line-height: 1.58; }
@@ -24,7 +24,7 @@
   <body>
     <main class="doc">
       <h1>VixArena</h1>
-      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with PWA metadata, a room browser, lobby leaderboard preview, round summary overlay, settings drawer, an objective HUD, minimap, edge target markers, score popups, FPS and snapshot-rate indicators, quick pings, sound toggle, reduced-effects mode, and touch controls.</p>
+      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with PWA metadata, a room browser, lobby leaderboard preview, round summary overlay, settings drawer, an objective HUD, minimap, danger zones, edge target markers, score popups, FPS and snapshot-rate indicators, quick pings, sound toggle, reduced-effects mode, and touch controls.</p>
 
       <h2>Controls</h2>
       <ul>
@@ -42,6 +42,7 @@
         <li>Complete Orb Run by collecting 3 orbs for a bonus.</li>
         <li>Grab violet speed boosts for temporary faster movement.</li>
         <li>Hold the green control zone for passive points. If multiple players contest it, scoring pauses.</li>
+        <li>Avoid red danger zones. They remove score over time unless shield is active.</li>
         <li>At round end, the intermission overlay shows the winner and top round scores.</li>
         <li>Follow the objective HUD and edge markers to find nearby orbs, boosts, or the control zone.</li>
         <li><code>Enter</code> focuses chat.</li>
@@ -53,12 +54,12 @@
         <li><code>GET /</code> game page.</li>
         <li><code>GET /health</code> health JSON with service status, player count, and uptime.</li>
         <li><code>GET /ready</code> readiness JSON with PostgreSQL enabled state, schema version, queued writes, and failed writes. Production Nginx allows it only from localhost.</li>
-        <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, powerups, round state, and control zone. Use <code>?room=duel-room</code> when you already know a room code and want that room's live state.</li>
-        <li><code>GET /api/stats</code> runtime counters, human/bot player counts, tick target, pickups, rounds, control-zone points, and persistence health. Use <code>?room=duel-room</code> for live player/round counts scoped to a known room while process-level counters remain visible.</li>
+        <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, powerups, hazards, round state, and control zone. Use <code>?room=duel-room</code> when you already know a room code and want that room's live state.</li>
+        <li><code>GET /api/stats</code> runtime counters, human/bot player counts, tick target, pickups, rounds, control-zone points, hazard damage, and persistence health. Use <code>?room=duel-room</code> for live player/round counts scoped to a known room while process-level counters remain visible.</li>
         <li><code>GET /api/rooms</code> active room summary used by the room browser. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.</li>
         <li><code>GET /api/leaderboard</code> persistent PostgreSQL leaderboard sorted by wins, best score, total score, and name. Use <code>?room=duel-room</code> for a room-scoped board.</li>
         <li><code>GET /api/matches</code> recent PostgreSQL match history. Use <code>?room=duel-room</code> for room-scoped history.</li>
-        <li><code>GET /metrics</code> Prometheus text metrics with player counts, HTTP response/rate-limit counters, WebSocket traffic, tick durations, rejected messages, pickups, quests, rounds, and PostgreSQL write health. Production Nginx allows it only from localhost.</li>
+        <li><code>GET /metrics</code> Prometheus text metrics with player counts, HTTP response/rate-limit counters, WebSocket traffic, tick durations, rejected messages, pickups, quests, hazards, rounds, and PostgreSQL write health. Production Nginx allows it only from localhost.</li>
         <li><code>GET /stats</code> public stats page with runtime counters, leaderboard, and match history.</li>
         <li><code>GET /docs</code> this page.</li>
         <li><code>GET /manifest.json</code>, <code>GET /sw.js</code>, and <code>GET /icons/icon.svg</code> installable PWA metadata and static shell cache assets. The service worker bypasses live API, metrics, health, readiness, and WebSocket endpoints.</li>
@@ -79,8 +80,8 @@
 
       <h2>Server messages</h2>
       <pre><code>{"type":"welcome","protocolVersion":2,"serverTimeMs":1779035000000,"id":"p-1","room":"duel-room","features":["snapshot_delta"],"world":{"width":2000,"height":1200,"obstacles":[]}}</code></pre>
-      <pre><code>{"type":"snapshot","protocolVersion":2,"snapshotId":1,"baseSnapshotId":null,"tick":1,"full":true,"serverTimeMs":1779035000050,"players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[{"id":1,"type":"orb","text":"Micu collected +5","timestamp":"2026-05-03T17:00:00Z"}]}</code></pre>
-      <pre><code>{"type":"snapshot_delta","protocolVersion":2,"snapshotId":2,"baseSnapshotId":1,"tick":2,"full":false,"serverTimeMs":1779035000100,"players":[],"removedPlayers":[],"orbs":[],"removedOrbs":[],"powerups":[],"removedPowerups":[],"events":[],"removedEvents":[]}</code></pre>
+      <pre><code>{"type":"snapshot","protocolVersion":2,"snapshotId":1,"baseSnapshotId":null,"tick":1,"full":true,"serverTimeMs":1779035000050,"players":[{"id":"p-1","name":"Micu","x":100,"y":200,"color":"#66ccff","score":10,"boostMs":0}],"orbs":[{"id":"o-1","x":400,"y":300,"value":5,"color":"#66ccff"}],"powerups":[{"id":"u-1","kind":"speed","x":700,"y":350,"durationSeconds":6,"color":"#c9a7ff"}],"hazards":[{"id":"h-1","x":520,"y":760,"radius":46,"penaltyPerSecond":3,"color":"#ff5c8a"}],"controlZone":{"x":1000,"y":600,"radius":150,"pointsPerSecond":2},"round":{"number":1,"phase":"active","secondsRemaining":180},"events":[{"id":1,"type":"orb","text":"Micu collected +5","timestamp":"2026-05-03T17:00:00Z"}]}</code></pre>
+      <pre><code>{"type":"snapshot_delta","protocolVersion":2,"snapshotId":2,"baseSnapshotId":1,"tick":2,"full":false,"serverTimeMs":1779035000100,"players":[],"removedPlayers":[],"orbs":[],"removedOrbs":[],"powerups":[],"removedPowerups":[],"hazards":[],"removedHazards":[],"events":[],"removedEvents":[]}</code></pre>
       <pre><code>{"type":"chat","from":"Micu","message":"salut","timestamp":"2026-05-03T17:00:00Z"}</code></pre>
       <pre><code>{"type":"ability","id":"p-1","ability":"dash","timestamp":"2026-05-03T17:00:00Z"}</code></pre>
       <pre><code>{"type":"player_joined","id":"p-1","name":"Micu"}</code></pre>
@@ -99,7 +100,7 @@
         <li>Players can join a private room with the room field or a <code>?room=duel-room</code> URL.</li>
         <li>Public room discovery reports aggregate private room counts without exposing private room codes.</li>
         <li>Input is throttled server-side and the arena caps active joined players.</li>
-        <li>Movement, abilities, cooldowns, speed boosts, orb pickup scoring, mini quest progress, round state, and control-zone scoring are server-authoritative.</li>
+        <li>Movement, abilities, cooldowns, speed boosts, orb pickup scoring, mini quest progress, hazard damage, round state, and control-zone scoring are server-authoritative.</li>
         <li>Chat is throttled per connection and the last 50 messages are kept in memory.</li>
       </ul>
 

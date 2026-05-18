@@ -68,6 +68,16 @@ namespace arena
       std::string color{"#c9a7ff"};
     };
 
+    struct Hazard
+    {
+      std::string id;
+      double x{0.0};
+      double y{0.0};
+      double radius{46.0};
+      double penaltyPerSecond{3.0};
+      std::string color{"#ff5c8a"};
+    };
+
     struct GameEvent
     {
       std::uint64_t id{0};
@@ -81,9 +91,11 @@ namespace arena
     {
       std::vector<Orb> orbs;
       std::vector<Powerup> powerups;
+      std::vector<Hazard> hazards;
       std::deque<GameEvent> eventHistory;
       std::uint64_t nextOrbNumber{1};
       std::uint64_t nextPowerupNumber{1};
+      std::uint64_t nextHazardNumber{1};
       std::uint64_t nextEventNumber{1};
       std::uint64_t roundNumber{1};
       std::uint64_t totalRoundsCompleted{0};
@@ -148,6 +160,7 @@ namespace arena
     [[nodiscard]] std::vector<std::string> activeRoomCodesLocked() const;
     void ensureOrbsLocked(RoomState &room);
     void ensurePowerupsLocked(RoomState &room);
+    void ensureHazardsLocked(RoomState &room);
     void updateRoundLocked(RoomState &room, const std::string &roomCode);
     void finishRoundLocked(RoomState &room, std::chrono::steady_clock::time_point now, const std::string &roomCode);
     void startNextRoundLocked(RoomState &room, std::chrono::steady_clock::time_point now, const std::string &roomCode);
@@ -159,6 +172,7 @@ namespace arena
     [[nodiscard]] nlohmann::json matchesJsonLocked(std::size_t limit = 20, const std::string &roomCode = {}) const;
     void handleOrbPickupsLocked(RoomState &room, const std::string &roomCode);
     void handlePowerupPickupsLocked(RoomState &room, const std::string &roomCode);
+    void handleHazardsLocked(RoomState &room, const std::string &roomCode, double dt);
     void handleControlZoneLocked(RoomState &room, const std::string &roomCode, double dt);
     void applyDashLocked(Player &player, std::chrono::steady_clock::time_point now);
     void addEventLocked(std::string type, std::string text, std::string roomCode = "public");
@@ -167,6 +181,7 @@ namespace arena
     [[nodiscard]] nlohmann::json snapshotDeltaLocked(const nlohmann::json &current, const nlohmann::json &previous, std::uint64_t baseSnapshotId) const;
     [[nodiscard]] nlohmann::json orbsJsonLocked(const RoomState &room) const;
     [[nodiscard]] nlohmann::json powerupsJsonLocked(const RoomState &room) const;
+    [[nodiscard]] nlohmann::json hazardsJsonLocked(const RoomState &room) const;
     [[nodiscard]] nlohmann::json controlZoneJson() const;
     [[nodiscard]] nlohmann::json roundJsonLocked(const RoomState &room) const;
     [[nodiscard]] nlohmann::json eventsJsonLocked(const RoomState &room) const;
@@ -183,6 +198,7 @@ namespace arena
     [[nodiscard]] std::string randomColor();
     [[nodiscard]] Orb spawnOrbLocked(RoomState &room);
     [[nodiscard]] Powerup spawnPowerupLocked(RoomState &room);
+    [[nodiscard]] Hazard spawnHazardLocked(RoomState &room);
 
     mutable std::mutex mutex_;
     World world_;
@@ -209,6 +225,7 @@ namespace arena
     std::uint64_t totalOrbPickups_{0};
     std::uint64_t totalControlZonePoints_{0};
     std::uint64_t totalPowerupsSinceStart_{0};
+    std::uint64_t totalHazardDamage_{0};
     std::uint64_t totalQuestsCompleted_{0};
     std::uint64_t nextBotNumber_{1};
     std::uint64_t totalRoundsCompleted_{0};
@@ -231,8 +248,12 @@ namespace arena
     static constexpr double playerSpeed_{235.0};
     static constexpr std::size_t targetOrbCount_{18};
     static constexpr std::size_t targetPowerupCount_{5};
+    static constexpr std::size_t targetHazardCount_{5};
     static constexpr double orbRadius_{12.0};
     static constexpr double powerupRadius_{14.0};
+    static constexpr double hazardRadius_{46.0};
+    static constexpr double hazardPenaltyPerSecond_{3.0};
+    static constexpr int hazardEventCooldownMs_{1300};
     static constexpr double speedBoostMultiplier_{1.55};
     static constexpr double dashDistance_{170.0};
     static constexpr int dashCooldownMs_{2600};

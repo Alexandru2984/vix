@@ -41,8 +41,10 @@ namespace arena
     int roundPowerups{0};
     int roundQuests{0};
     int roundControlZonePoints{0};
+    int roundHazardDamage{0};
     int roundAbilitiesUsed{0};
     double controlCarry{0.0};
+    double hazardCarry{0.0};
     double x{0.0};
     double y{0.0};
     PlayerInput input;
@@ -50,6 +52,7 @@ namespace arena
     std::chrono::steady_clock::time_point lastSeen;
     std::chrono::steady_clock::time_point lastInput;
     std::chrono::steady_clock::time_point lastChat;
+    std::chrono::steady_clock::time_point lastHazardHit;
     std::chrono::steady_clock::time_point speedBoostUntil;
     std::chrono::steady_clock::time_point dashReadyAt;
     std::chrono::steady_clock::time_point shieldUntil;

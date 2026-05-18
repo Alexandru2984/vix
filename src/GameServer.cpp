@@ -160,6 +160,7 @@ namespace arena
     RoomState &publicRoom = roomStateLocked("public");
     ensureOrbsLocked(publicRoom);
     ensurePowerupsLocked(publicRoom);
+    ensureHazardsLocked(publicRoom);
   }
 
   GameServer::~GameServer()
@@ -811,6 +812,7 @@ namespace arena
       room.intermissionUntil = now;
       ensureOrbsLocked(room);
       ensurePowerupsLocked(room);
+      ensureHazardsLocked(room);
     }
     return room;
   }
@@ -848,6 +850,7 @@ namespace arena
       RoomState &room = roomStateLocked(roomCode);
       ensureOrbsLocked(room);
       ensurePowerupsLocked(room);
+      ensureHazardsLocked(room);
       updateRoundLocked(room, roomCode);
     }
 
@@ -908,6 +911,7 @@ namespace arena
       }
       handleOrbPickupsLocked(room, roomCode);
       handlePowerupPickupsLocked(room, roomCode);
+      handleHazardsLocked(room, roomCode, dt);
       handleControlZoneLocked(room, roomCode, dt);
     }
   }
@@ -925,6 +929,14 @@ namespace arena
     while (room.powerups.size() < targetPowerupCount_)
     {
       room.powerups.push_back(spawnPowerupLocked(room));
+    }
+  }
+
+  void GameServer::ensureHazardsLocked(RoomState &room)
+  {
+    while (room.hazards.size() < targetHazardCount_)
+    {
+      room.hazards.push_back(spawnHazardLocked(room));
     }
   }
 
@@ -1190,6 +1202,8 @@ namespace arena
     ensureOrbsLocked(room);
     room.powerups.clear();
     ensurePowerupsLocked(room);
+    room.hazards.clear();
+    ensureHazardsLocked(room);
 
     for (auto &[_, player] : players_)
     {
@@ -1200,6 +1214,7 @@ namespace arena
       player.score = 0;
       player.orbQuestProgress = 0;
       player.controlCarry = 0.0;
+      player.hazardCarry = 0.0;
       auto [x, y] = world_.randomSpawn(rng_);
       player.x = x;
       player.y = y;
@@ -1214,6 +1229,7 @@ namespace arena
       player.roundPowerups = 0;
       player.roundQuests = 0;
       player.roundControlZonePoints = 0;
+      player.roundHazardDamage = 0;
       player.roundAbilitiesUsed = 0;
       player.facingX = 1.0;
       player.facingY = 0.0;
@@ -1369,6 +1385,7 @@ namespace arena
           {"powerups", player.roundPowerups},
           {"quests", player.roundQuests},
           {"controlZonePoints", player.roundControlZonePoints},
+          {"hazardDamage", player.roundHazardDamage},
           {"abilitiesUsed", player.roundAbilitiesUsed},
       });
 
@@ -1649,6 +1666,64 @@ namespace arena
     }
   }
 
+  void GameServer::handleHazardsLocked(RoomState &room, const std::string &roomCode, double dt)
+  {
+    if (room.hazards.empty())
+    {
+      return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    for (auto &[_, player] : players_)
+    {
+      if (player.roomCode != roomCode)
+      {
+        continue;
+      }
+
+      bool exposed = false;
+      for (const auto &hazard : room.hazards)
+      {
+        const double radius = hazard.radius + World::playerRadius;
+        if (distanceSq(player.x, player.y, hazard.x, hazard.y) <= radius * radius)
+        {
+          exposed = true;
+          break;
+        }
+      }
+
+      if (!exposed || now < player.shieldUntil)
+      {
+        player.hazardCarry = 0.0;
+        continue;
+      }
+
+      player.hazardCarry += dt * hazardPenaltyPerSecond_;
+      const int wholeDamage = static_cast<int>(player.hazardCarry);
+      if (wholeDamage <= 0)
+      {
+        continue;
+      }
+
+      const int appliedDamage = std::min(player.score, wholeDamage);
+      player.hazardCarry -= wholeDamage;
+      if (appliedDamage <= 0)
+      {
+        continue;
+      }
+
+      player.score -= appliedDamage;
+      player.roundHazardDamage += appliedDamage;
+      totalHazardDamage_ += static_cast<std::uint64_t>(appliedDamage);
+
+      if (now - player.lastHazardHit >= std::chrono::milliseconds(hazardEventCooldownMs_))
+      {
+        player.lastHazardHit = now;
+        addEventLocked("hazard", player.name + " hit a danger zone -" + std::to_string(appliedDamage), player.roomCode);
+      }
+    }
+  }
+
   void GameServer::handleControlZoneLocked(RoomState &, const std::string &roomCode, double dt)
   {
     const double zoneSq = controlZoneRadius_ * controlZoneRadius_;
@@ -1807,6 +1882,7 @@ namespace arena
         {"players", players},
         {"orbs", orbsJsonLocked(roomRef)},
         {"powerups", powerupsJsonLocked(roomRef)},
+        {"hazards", hazardsJsonLocked(roomRef)},
         {"controlZone", controlZoneJson()},
         {"round", roundJsonLocked(roomRef)},
         {"events", eventsJsonLocked(roomRef)},
@@ -1819,6 +1895,7 @@ namespace arena
     const auto players = collectionDelta(current.value("players", nlohmann::json::array()), previous.value("players", nlohmann::json::array()));
     const auto orbs = collectionDelta(current.value("orbs", nlohmann::json::array()), previous.value("orbs", nlohmann::json::array()));
     const auto powerups = collectionDelta(current.value("powerups", nlohmann::json::array()), previous.value("powerups", nlohmann::json::array()));
+    const auto hazards = collectionDelta(current.value("hazards", nlohmann::json::array()), previous.value("hazards", nlohmann::json::array()));
     const auto events = collectionDelta(current.value("events", nlohmann::json::array()), previous.value("events", nlohmann::json::array()));
 
     nlohmann::json delta = {
@@ -1836,6 +1913,8 @@ namespace arena
         {"removedOrbs", orbs.at("removed")},
         {"powerups", powerups.at("upserts")},
         {"removedPowerups", powerups.at("removed")},
+        {"hazards", hazards.at("upserts")},
+        {"removedHazards", hazards.at("removed")},
         {"events", events.at("upserts")},
         {"removedEvents", events.at("removed")}};
 
@@ -1880,6 +1959,22 @@ namespace arena
           {"color", powerup.color}});
     }
     return powerups;
+  }
+
+  nlohmann::json GameServer::hazardsJsonLocked(const RoomState &room) const
+  {
+    nlohmann::json hazards = nlohmann::json::array();
+    for (const auto &hazard : room.hazards)
+    {
+      hazards.push_back({
+          {"id", hazard.id},
+          {"x", hazard.x},
+          {"y", hazard.y},
+          {"radius", hazard.radius},
+          {"penaltyPerSecond", hazard.penaltyPerSecond},
+          {"color", hazard.color}});
+    }
+    return hazards;
   }
 
   nlohmann::json GameServer::controlZoneJson() const
@@ -2183,6 +2278,50 @@ namespace arena
     return powerup;
   }
 
+  GameServer::Hazard GameServer::spawnHazardLocked(RoomState &room)
+  {
+    static const std::vector<std::string> colors = {
+        "#ff5c8a", "#ff7a5c", "#f54768"};
+
+    std::uniform_real_distribution<double> xdist(hazardRadius_ + 60.0, world_.width() - hazardRadius_ - 60.0);
+    std::uniform_real_distribution<double> ydist(hazardRadius_ + 60.0, world_.height() - hazardRadius_ - 60.0);
+    std::uniform_int_distribution<std::size_t> colorDist(0, colors.size() - 1);
+
+    Hazard hazard;
+    hazard.id = "h-" + std::to_string(room.nextHazardNumber++);
+    hazard.radius = hazardRadius_;
+    hazard.penaltyPerSecond = hazardPenaltyPerSecond_;
+    hazard.color = colors[colorDist(rng_)];
+
+    for (int attempt = 0; attempt < 160; ++attempt)
+    {
+      const double x = xdist(rng_);
+      const double y = ydist(rng_);
+      if (world_.collides(x, y, hazard.radius + 12.0))
+      {
+        continue;
+      }
+
+      const bool overlapsOrb = std::any_of(room.orbs.begin(), room.orbs.end(), [&](const Orb &orb)
+                                           { return distanceSq(x, y, orb.x, orb.y) < (hazard.radius + orbRadius_ + 30.0) * (hazard.radius + orbRadius_ + 30.0); });
+      const bool overlapsPowerup = std::any_of(room.powerups.begin(), room.powerups.end(), [&](const Powerup &powerup)
+                                               { return distanceSq(x, y, powerup.x, powerup.y) < (hazard.radius + powerupRadius_ + 40.0) * (hazard.radius + powerupRadius_ + 40.0); });
+      const bool overlapsControl = distanceSq(x, y, controlZoneX_, controlZoneY_) < (hazard.radius + controlZoneRadius_ + 70.0) * (hazard.radius + controlZoneRadius_ + 70.0);
+      const bool overlapsHazard = std::any_of(room.hazards.begin(), room.hazards.end(), [&](const Hazard &other)
+                                              { return distanceSq(x, y, other.x, other.y) < (hazard.radius + other.radius + 95.0) * (hazard.radius + other.radius + 95.0); });
+      if (!overlapsOrb && !overlapsPowerup && !overlapsControl && !overlapsHazard)
+      {
+        hazard.x = x;
+        hazard.y = y;
+        return hazard;
+      }
+    }
+
+    hazard.x = world_.width() * 0.5 - 330.0 + static_cast<double>(room.hazards.size()) * 115.0;
+    hazard.y = world_.height() * 0.5 + 260.0;
+    return hazard;
+  }
+
   nlohmann::json GameServer::healthJson() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -2241,6 +2380,7 @@ namespace arena
         {"world", worldSummary(world_)},
         {"orbs", orbsJsonLocked(roomRef)},
         {"powerups", powerupsJsonLocked(roomRef)},
+        {"hazards", hazardsJsonLocked(roomRef)},
         {"controlZone", controlZoneJson()},
         {"round", roundJsonLocked(roomRef)},
         {"events", eventsJsonLocked(roomRef)}};
@@ -2279,6 +2419,7 @@ namespace arena
         {"totalOrbPickupsSinceStart", totalOrbPickups_},
         {"totalControlZonePointsSinceStart", totalControlZonePoints_},
         {"totalPowerupsSinceStart", totalPowerupsSinceStart_},
+        {"totalHazardDamageSinceStart", totalHazardDamage_},
         {"totalQuestsCompletedSinceStart", totalQuestsCompleted_},
         {"roundNumber", roundNumber},
         {"totalRoundsCompletedSinceStart", totalRoundsCompleted_},
@@ -2459,6 +2600,7 @@ namespace arena
     std::uint64_t totalQuests = 0;
     std::uint64_t totalRounds = 0;
     std::uint64_t totalControlPoints = 0;
+    std::uint64_t totalHazardDamage = 0;
     std::size_t leaderboardEntries = 0;
     std::size_t matchHistorySize = 0;
     std::size_t activeWsConnections = 0;
@@ -2480,6 +2622,7 @@ namespace arena
       totalQuests = totalQuestsCompleted_;
       totalRounds = totalRoundsCompleted_;
       totalControlPoints = totalControlZonePoints_;
+      totalHazardDamage = totalHazardDamage_;
       leaderboardEntries = leaderboard_.size();
       matchHistorySize = matchHistory_.size();
       activeWsConnections = sessionAbuse_.size();
@@ -2520,6 +2663,7 @@ namespace arena
     appendMetric(out, "vix_arena_quests_completed_total", "Total Orb Run quests completed.", "counter", totalQuests);
     appendMetric(out, "vix_arena_rounds_completed_total", "Total rounds completed.", "counter", totalRounds);
     appendMetric(out, "vix_arena_control_zone_points_total", "Total points awarded by control zone.", "counter", totalControlPoints);
+    appendMetric(out, "vix_arena_hazard_damage_total", "Total score points removed by danger zones.", "counter", totalHazardDamage);
     appendMetric(out, "vix_arena_leaderboard_entries", "Current persistent leaderboard entries.", "gauge", static_cast<std::uint64_t>(leaderboardEntries));
     appendMetric(out, "vix_arena_match_history_entries", "Current persistent match history entries.", "gauge", static_cast<std::uint64_t>(matchHistorySize));
     appendMetric(out, "vix_arena_postgres_configured", "PostgreSQL persistence is configured.", "gauge", persistenceStatus.configured ? 1 : 0);

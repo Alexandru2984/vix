@@ -65,6 +65,7 @@
     world: { width: 2000, height: 1200, obstacles: [] },
     orbs: [],
     powerups: [],
+    hazards: [],
     controlZone: { x: 1000, y: 600, radius: 150, pointsPerSecond: 2 },
     round: { number: 1, phase: "active", secondsRemaining: 180, lastWinner: { name: "No winner yet", score: 0 } },
     events: [],
@@ -396,6 +397,7 @@
       applySnapshot(msg.players || []);
       state.orbs = Array.isArray(msg.orbs) ? msg.orbs : state.orbs;
       state.powerups = Array.isArray(msg.powerups) ? msg.powerups : state.powerups;
+      state.hazards = Array.isArray(msg.hazards) ? msg.hazards : state.hazards;
       state.controlZone = msg.controlZone || state.controlZone;
       state.round = msg.round || state.round;
       applyEvents(msg.events || []);
@@ -516,6 +518,7 @@
     applySnapshot(msg.players || [], msg.removedPlayers || []);
     state.orbs = mergeById(state.orbs, msg.orbs || [], msg.removedOrbs || []);
     state.powerups = mergeById(state.powerups, msg.powerups || [], msg.removedPowerups || []);
+    state.hazards = mergeById(state.hazards, msg.hazards || [], msg.removedHazards || []);
     state.controlZone = msg.controlZone || state.controlZone;
     state.round = msg.round || state.round;
     applyEvents(msg.events || []);
@@ -551,6 +554,17 @@
       state.floaters = state.floaters.slice(-8);
       burstParticles(local.x, local.y, local.color || "#ffcc66", 14);
       playTone(660, 0.055, "sine");
+    } else if (local && state.lastLocalScore !== null && (local.score || 0) < state.lastLocalScore) {
+      state.floaters.push({
+        x: local.x,
+        y: local.y - 30,
+        text: `-${state.lastLocalScore - (local.score || 0)}`,
+        color: "#ff5c8a",
+        createdAt: performance.now()
+      });
+      state.floaters = state.floaters.slice(-8);
+      burstParticles(local.x, local.y, "#ff5c8a", 10);
+      playTone(180, 0.06, "sawtooth");
     }
     if (local) state.lastLocalScore = local.score || 0;
     else state.lastLocalScore = null;
@@ -699,6 +713,22 @@
         color: powerup.color || "#c9a7ff",
         dist: distance(local, powerup) * 0.9
       });
+    }
+
+    for (const hazard of state.hazards) {
+      if (!Number.isFinite(hazard.x) || !Number.isFinite(hazard.y)) continue;
+      const rawDist = distance(local, hazard);
+      const hazardRadius = Number(hazard.radius) || 46;
+      if (rawDist <= hazardRadius + 90) {
+        candidates.push({
+          label: "Exit danger zone",
+          detail: `-${hazard.penaltyPerSecond || 3}/s`,
+          x: hazard.x,
+          y: hazard.y,
+          color: hazard.color || "#ff5c8a",
+          dist: 0
+        });
+      }
     }
 
     const zone = state.controlZone;
@@ -1275,6 +1305,14 @@
       ctx.fillRect(x + o.x * sx, y + o.y * sy, o.w * sx, o.h * sy);
     }
 
+    ctx.fillStyle = "rgba(255,92,138,0.30)";
+    for (const hazard of state.hazards) {
+      const radius = Math.max(3, (hazard.radius || 46) * sx);
+      ctx.beginPath();
+      ctx.arc(x + hazard.x * sx, y + hazard.y * sy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.fillStyle = "rgba(122,245,155,0.32)";
     const zone = state.controlZone;
     if (zone) {
@@ -1456,6 +1494,28 @@
     for (const o of state.world.obstacles || []) {
       ctx.fillRect(o.x, o.y, o.w, o.h);
       ctx.strokeRect(o.x, o.y, o.w, o.h);
+    }
+
+    for (const hazard of state.hazards) {
+      const radius = Number(hazard.radius) || 46;
+      const pulse = state.reducedEffects ? 0 : Math.sin((now - state.startedAt) / 260 + radius) * 4;
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(255,92,138,0.16)";
+      ctx.strokeStyle = hazard.color || "#ff5c8a";
+      ctx.lineWidth = 3;
+      ctx.arc(hazard.x, hazard.y, radius + pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(255,255,255,0.20)";
+      ctx.setLineDash([8, 8]);
+      ctx.arc(hazard.x, hazard.y, Math.max(8, radius - 13), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "700 12px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffdbe5";
+      ctx.fillText(`-${hazard.penaltyPerSecond || 3}/s`, hazard.x, hazard.y + 4);
     }
 
     for (const orb of state.orbs) {
