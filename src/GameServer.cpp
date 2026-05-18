@@ -144,9 +144,15 @@ namespace arena
   }
 
   GameServer::GameServer(std::filesystem::path dataDir, std::string databaseUrl, std::filesystem::path migrationsDir)
+      : GameServer(std::move(dataDir), std::move(databaseUrl), std::move(migrationsDir), Limits{})
+  {
+  }
+
+  GameServer::GameServer(std::filesystem::path dataDir, std::string databaseUrl, std::filesystem::path migrationsDir, Limits limits)
       : rng_(std::random_device{}()),
         dataDir_(std::move(dataDir)),
-        startedAt_(std::chrono::steady_clock::now())
+        startedAt_(std::chrono::steady_clock::now()),
+        limits_(limits)
   {
     if (!databaseUrl.empty())
     {
@@ -195,7 +201,7 @@ namespace arena
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const std::string ip = session ? session->remoteAddress : "";
-    if (!ip.empty() && connectionsByIp_[ip] >= maxConnectionsPerIp_)
+    if (!ip.empty() && connectionsByIp_[ip] >= maxConnectionsForIpLocked(ip))
     {
       ++totalRejectedConnections_;
       return false;
@@ -206,7 +212,7 @@ namespace arena
       ++connectionsByIp_[ip];
     }
     SessionAbuseState abuse;
-    abuse.messageTokens = wsMessageBurst_;
+    abuse.messageTokens = wsMessageBurstForIpLocked(ip);
     abuse.lastRefill = std::chrono::steady_clock::now();
     sessionAbuse_[session.get()] = abuse;
     ++totalConnections_;
@@ -356,9 +362,11 @@ namespace arena
 
     const auto now = std::chrono::steady_clock::now();
     SessionAbuseState &abuse = it->second;
+    const std::string ip = session ? session->remoteAddress : "";
     const std::chrono::duration<double> elapsed = now - abuse.lastRefill;
     abuse.lastRefill = now;
-    abuse.messageTokens = std::min(wsMessageBurst_, abuse.messageTokens + elapsed.count() * wsMessageRefillPerSecond_);
+    const double burst = wsMessageBurstForIpLocked(ip);
+    abuse.messageTokens = std::min(burst, abuse.messageTokens + elapsed.count() * wsMessageRefillForIpLocked(ip));
     if (abuse.messageTokens < 1.0)
     {
       ++totalRateLimitRejects_;
@@ -379,7 +387,27 @@ namespace arena
       return false;
     }
     ++it->second.invalidMessages;
-    return it->second.invalidMessages >= maxInvalidMessagesPerConnection_;
+    return it->second.invalidMessages >= limits_.maxInvalidMessagesPerConnection;
+  }
+
+  bool GameServer::benchmarkSourceLocked(const std::string &ip) const
+  {
+    return !ip.empty() && std::find(limits_.benchmarkSourceIps.begin(), limits_.benchmarkSourceIps.end(), ip) != limits_.benchmarkSourceIps.end();
+  }
+
+  std::size_t GameServer::maxConnectionsForIpLocked(const std::string &ip) const
+  {
+    return benchmarkSourceLocked(ip) ? limits_.benchmarkMaxConnectionsPerIp : limits_.maxConnectionsPerIp;
+  }
+
+  double GameServer::wsMessageBurstForIpLocked(const std::string &ip) const
+  {
+    return benchmarkSourceLocked(ip) ? limits_.benchmarkWsMessageBurst : limits_.wsMessageBurst;
+  }
+
+  double GameServer::wsMessageRefillForIpLocked(const std::string &ip) const
+  {
+    return benchmarkSourceLocked(ip) ? limits_.benchmarkWsMessageRefillPerSecond : limits_.wsMessageRefillPerSecond;
   }
 
   void GameServer::closeSession(ClientConnection *session, const std::string &reason)
@@ -2446,9 +2474,14 @@ namespace arena
         {"websocket", {
                           {"activeConnections", sessionAbuse_.size()},
                           {"activeRemoteAddresses", connectionsByIp_.size()},
-                          {"maxConnectionsPerIp", maxConnectionsPerIp_},
-                          {"messageBurst", wsMessageBurst_},
-                          {"messageRefillPerSecond", wsMessageRefillPerSecond_},
+                          {"maxConnectionsPerIp", limits_.maxConnectionsPerIp},
+                          {"messageBurst", limits_.wsMessageBurst},
+                          {"messageRefillPerSecond", limits_.wsMessageRefillPerSecond},
+                          {"maxInvalidMessagesPerConnection", limits_.maxInvalidMessagesPerConnection},
+                          {"benchmarkSourceIps", limits_.benchmarkSourceIps.size()},
+                          {"benchmarkMaxConnectionsPerIp", limits_.benchmarkMaxConnectionsPerIp},
+                          {"benchmarkMessageBurst", limits_.benchmarkWsMessageBurst},
+                          {"benchmarkMessageRefillPerSecond", limits_.benchmarkWsMessageRefillPerSecond},
                           {"messagesReceived", totalMessagesReceived_.load()},
                           {"messageBytesReceived", totalMessageBytesReceived_.load()},
                           {"messagesSent", totalMessagesSent_.load()},

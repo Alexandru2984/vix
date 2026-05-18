@@ -286,6 +286,65 @@ namespace
     require(metrics.find("vix_arena_ws_protocol_violations_total") != std::string::npos, "metrics should expose protocol violations");
   }
 
+  void gameServerAppliesConfigurableLimits()
+  {
+    arena::GameServer::Limits limits;
+    limits.maxConnectionsPerIp = 2;
+    limits.wsMessageBurst = 3.0;
+    limits.wsMessageRefillPerSecond = 0.1;
+    limits.maxInvalidMessagesPerConnection = 2;
+    limits.benchmarkSourceIps = {"203.0.113.45"};
+    limits.benchmarkMaxConnectionsPerIp = 4;
+    limits.benchmarkWsMessageBurst = 10.0;
+    limits.benchmarkWsMessageRefillPerSecond = 5.0;
+
+    arena::GameServer server({}, "", {}, limits);
+    std::vector<std::shared_ptr<arena::ClientConnection>> clients;
+    for (int i = 0; i < 2; ++i)
+    {
+      auto client = std::make_shared<arena::ClientConnection>();
+      client->remoteAddress = "203.0.113.44";
+      clients.push_back(client);
+      require(server.onOpen(client), "custom per-IP cap should allow configured slots");
+    }
+
+    auto rejected = std::make_shared<arena::ClientConnection>();
+    rejected->remoteAddress = "203.0.113.44";
+    require(!server.onOpen(rejected), "custom per-IP cap should reject above configured slots");
+
+    std::vector<std::shared_ptr<arena::ClientConnection>> benchmarkClients;
+    for (int i = 0; i < 4; ++i)
+    {
+      auto client = std::make_shared<arena::ClientConnection>();
+      client->remoteAddress = "203.0.113.45";
+      benchmarkClients.push_back(client);
+      require(server.onOpen(client), "benchmark source should use benchmark connection cap");
+    }
+    auto benchmarkRejected = std::make_shared<arena::ClientConnection>();
+    benchmarkRejected->remoteAddress = "203.0.113.45";
+    require(!server.onOpen(benchmarkRejected), "benchmark source should still have a cap");
+
+    CapturedClient abusive;
+    require(server.onOpen(abusive.connection), "custom invalid-message test client should open");
+    server.onMessage(abusive.connection.get(), "{");
+    require(!abusive.closed, "custom invalid limit should not close before threshold");
+    server.onMessage(abusive.connection.get(), "{");
+    require(abusive.closed, "custom invalid limit should close at threshold");
+
+    CapturedClient burst;
+    require(server.onOpen(burst.connection), "custom burst test client should open");
+    for (int i = 0; i < 6; ++i)
+    {
+      server.onMessage(burst.connection.get(), R"({"type":"ping","t":1})");
+    }
+    const auto stats = server.statsJson();
+    requireEq(stats.at("websocket").value("maxConnectionsPerIp", 0), 2, "stats should expose custom connection cap");
+    requireEq(stats.at("websocket").value("benchmarkSourceIps", 0), 1, "stats should expose benchmark source count");
+    requireEq(stats.at("websocket").value("benchmarkMaxConnectionsPerIp", 0), 4, "stats should expose benchmark connection cap");
+    requireEq(stats.at("websocket").value("maxInvalidMessagesPerConnection", 0), 2, "stats should expose custom invalid-message cap");
+    require(stats.at("websocket").value("rateLimitRejects", 0) >= 1, "custom websocket burst should rate limit");
+  }
+
   void gameServerIsolatesRooms()
   {
     arena::GameServer server;
@@ -416,6 +475,7 @@ int main()
     run("game server join, chat, and rate limit flow", gameServerJoinChatAndRateLimitFlow);
     run("game server exposes stats and metrics", gameServerExposesStatsAndMetrics);
     run("game server limits connection and protocol abuse", gameServerLimitsConnectionAndProtocolAbuse);
+    run("game server applies configurable limits", gameServerAppliesConfigurableLimits);
     run("game server isolates rooms", gameServerIsolatesRooms);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);

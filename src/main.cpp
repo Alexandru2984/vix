@@ -49,20 +49,38 @@ namespace
 
   struct HttpRateLimitBucket
   {
-    double tokens{httpRateLimitBurst};
+    double tokens{0.0};
     std::chrono::steady_clock::time_point lastRefill{std::chrono::steady_clock::now()};
   };
 
   class HttpRateLimiter
   {
   public:
+    void configure(double burst, double refillPerSecond, std::vector<std::string> benchmarkIps = {}, double benchmarkBurst = 0.0, double benchmarkRefillPerSecond = 0.0)
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      burst_ = std::max(1.0, burst);
+      refillPerSecond_ = std::max(0.1, refillPerSecond);
+      benchmarkIps_ = std::move(benchmarkIps);
+      benchmarkBurst_ = std::max(burst_, benchmarkBurst > 0.0 ? benchmarkBurst : burst_);
+      benchmarkRefillPerSecond_ = std::max(refillPerSecond_, benchmarkRefillPerSecond > 0.0 ? benchmarkRefillPerSecond : refillPerSecond_);
+      buckets_.clear();
+    }
+
     bool allow(const std::string &key)
     {
       const auto now = std::chrono::steady_clock::now();
       std::lock_guard<std::mutex> lock(mutex_);
       auto &bucket = buckets_[key.empty() ? "unknown" : key];
+      const bool benchmark = std::find(benchmarkIps_.begin(), benchmarkIps_.end(), key) != benchmarkIps_.end();
+      const double burst = benchmark ? benchmarkBurst_ : burst_;
+      const double refillPerSecond = benchmark ? benchmarkRefillPerSecond_ : refillPerSecond_;
       const double elapsed = std::chrono::duration<double>(now - bucket.lastRefill).count();
-      bucket.tokens = std::min(httpRateLimitBurst, bucket.tokens + elapsed * httpRateLimitRefillPerSecond);
+      if (bucket.tokens <= 0.0)
+      {
+        bucket.tokens = burst;
+      }
+      bucket.tokens = std::min(burst, bucket.tokens + elapsed * refillPerSecond);
       bucket.lastRefill = now;
       if (bucket.tokens < 1.0)
       {
@@ -96,6 +114,11 @@ namespace
 
     std::mutex mutex_;
     std::unordered_map<std::string, HttpRateLimitBucket> buckets_;
+    double burst_{httpRateLimitBurst};
+    double refillPerSecond_{httpRateLimitRefillPerSecond};
+    std::vector<std::string> benchmarkIps_;
+    double benchmarkBurst_{httpRateLimitBurst};
+    double benchmarkRefillPerSecond_{httpRateLimitRefillPerSecond};
   };
 
   HttpRateLimiter gHttpRateLimiter;
@@ -154,6 +177,26 @@ namespace
       start = comma + 1;
     }
     return origins;
+  }
+
+  std::vector<std::string> parseCsvList(const std::string &value)
+  {
+    std::vector<std::string> items;
+    std::size_t start = 0;
+    while (start < value.size())
+    {
+      const auto comma = value.find(',', start);
+      const auto end = comma == std::string::npos ? value.size() : comma;
+      std::string item = trim(value.substr(start, end - start));
+      if (!item.empty())
+      {
+        items.push_back(std::move(item));
+      }
+      if (comma == std::string::npos)
+        break;
+      start = comma + 1;
+    }
+    return items;
   }
 
   int hexValue(char c)
@@ -252,6 +295,20 @@ namespace
     try
     {
       return std::stoi(envString(fileEnv, key, std::to_string(fallback)));
+    }
+    catch (...)
+    {
+      return fallback;
+    }
+  }
+
+  double envDouble(const std::unordered_map<std::string, std::string> &fileEnv,
+                   const char *key,
+                   double fallback)
+  {
+    try
+    {
+      return std::stod(envString(fileEnv, key, std::to_string(fallback)));
     }
     catch (...)
     {
@@ -874,6 +931,20 @@ int main()
   const std::string publicUrl = envString(fileEnv, "PUBLIC_URL", "");
   const std::string databaseUrl = envString(fileEnv, "DATABASE_URL", "");
   const std::filesystem::path dataDir = envString(fileEnv, "DATA_DIR", (root / "data").string());
+  arena::GameServer::Limits gameLimits;
+  gameLimits.maxConnectionsPerIp = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_CONNECTIONS_PER_IP", static_cast<int>(gameLimits.maxConnectionsPerIp))));
+  gameLimits.wsMessageBurst = std::max(1.0, envDouble(fileEnv, "WS_MESSAGE_BURST", gameLimits.wsMessageBurst));
+  gameLimits.wsMessageRefillPerSecond = std::max(0.1, envDouble(fileEnv, "WS_MESSAGE_REFILL_PER_SECOND", gameLimits.wsMessageRefillPerSecond));
+  gameLimits.maxInvalidMessagesPerConnection = static_cast<std::uint32_t>(std::max(1, envInt(fileEnv, "MAX_INVALID_MESSAGES_PER_CONNECTION", static_cast<int>(gameLimits.maxInvalidMessagesPerConnection))));
+  gameLimits.benchmarkSourceIps = parseCsvList(envString(fileEnv, "BENCHMARK_SOURCE_IPS", ""));
+  gameLimits.benchmarkMaxConnectionsPerIp = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "BENCHMARK_MAX_CONNECTIONS_PER_IP", static_cast<int>(gameLimits.benchmarkMaxConnectionsPerIp))));
+  gameLimits.benchmarkWsMessageBurst = std::max(gameLimits.wsMessageBurst, envDouble(fileEnv, "BENCHMARK_WS_MESSAGE_BURST", gameLimits.benchmarkWsMessageBurst));
+  gameLimits.benchmarkWsMessageRefillPerSecond = std::max(gameLimits.wsMessageRefillPerSecond, envDouble(fileEnv, "BENCHMARK_WS_MESSAGE_REFILL_PER_SECOND", gameLimits.benchmarkWsMessageRefillPerSecond));
+  const double httpRateBurst = std::max(1.0, envDouble(fileEnv, "HTTP_RATE_LIMIT_BURST", httpRateLimitBurst));
+  const double httpRateRefillPerSecond = std::max(0.1, envDouble(fileEnv, "HTTP_RATE_LIMIT_REFILL_PER_SECOND", httpRateLimitRefillPerSecond));
+  const double benchmarkHttpRateBurst = std::max(httpRateBurst, envDouble(fileEnv, "BENCHMARK_HTTP_RATE_LIMIT_BURST", 5000.0));
+  const double benchmarkHttpRateRefillPerSecond = std::max(httpRateRefillPerSecond, envDouble(fileEnv, "BENCHMARK_HTTP_RATE_LIMIT_REFILL_PER_SECOND", 1000.0));
+  gHttpRateLimiter.configure(httpRateBurst, httpRateRefillPerSecond, gameLimits.benchmarkSourceIps, benchmarkHttpRateBurst, benchmarkHttpRateRefillPerSecond);
   AppConfig config;
   config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", publicUrl.empty());
   config.allowedOrigins = parseOriginList(envString(fileEnv, "ALLOWED_ORIGINS", ""));
@@ -884,7 +955,7 @@ int main()
 
   try
   {
-    arena::GameServer game(dataDir, databaseUrl, root / "migrations");
+    arena::GameServer game(dataDir, databaseUrl, root / "migrations", gameLimits);
     game.start();
 
     asio::io_context ioc{static_cast<int>(std::max(2u, std::thread::hardware_concurrency()))};
@@ -911,6 +982,17 @@ int main()
                                          {"postgresConfigured", !databaseUrl.empty()},
                                          {"allowedOrigins", config.allowedOrigins},
                                          {"allowMissingOrigin", config.allowMissingOrigin},
+                                         {"maxConnectionsPerIp", gameLimits.maxConnectionsPerIp},
+                                         {"wsMessageBurst", gameLimits.wsMessageBurst},
+                                         {"wsMessageRefillPerSecond", gameLimits.wsMessageRefillPerSecond},
+                                         {"benchmarkSourceIps", gameLimits.benchmarkSourceIps.size()},
+                                         {"benchmarkMaxConnectionsPerIp", gameLimits.benchmarkMaxConnectionsPerIp},
+                                         {"benchmarkWsMessageBurst", gameLimits.benchmarkWsMessageBurst},
+                                         {"benchmarkWsMessageRefillPerSecond", gameLimits.benchmarkWsMessageRefillPerSecond},
+                                         {"httpRateLimitBurst", httpRateBurst},
+                                         {"httpRateLimitRefillPerSecond", httpRateRefillPerSecond},
+                                         {"benchmarkHttpRateLimitBurst", benchmarkHttpRateBurst},
+                                         {"benchmarkHttpRateLimitRefillPerSecond", benchmarkHttpRateRefillPerSecond},
                                      });
 
     std::vector<std::thread> threads;
