@@ -272,6 +272,64 @@ label {
   font-weight: 750;
 }
 
+.lobby-leaderboard {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(160, 180, 210, 0.14);
+}
+
+.lobby-leaderboard-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lobby-leaderboard-head h3 {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.lobby-leaderboard-head span {
+  overflow: hidden;
+  max-width: 170px;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-leaderboard-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lobby-leaderboard-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.lobby-leaderboard-list strong,
+.lobby-leaderboard-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-leaderboard-list strong {
+  color: var(--text);
+}
+
 input,
 button {
   height: 40px;
@@ -888,6 +946,11 @@ td {
     max-height: 104px;
   }
 
+  .lobby-leaderboard {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
   .mobile-actions {
     position: absolute;
     right: max(14px, env(safe-area-inset-right));
@@ -1128,6 +1191,10 @@ td {
 
   .room-list {
     max-height: 82px;
+  }
+
+  .lobby-leaderboard-list {
+    display: none;
   }
 
   .chat-panel {

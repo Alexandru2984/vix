@@ -20,6 +20,8 @@
   const newRoomBtn = document.getElementById("newRoomBtn");
   const refreshRoomsBtn = document.getElementById("refreshRoomsBtn");
   const roomList = document.getElementById("roomList");
+  const lobbyLeaderboardMeta = document.getElementById("lobbyLeaderboardMeta");
+  const lobbyLeaderboard = document.getElementById("lobbyLeaderboard");
   const joinBtn = document.getElementById("joinBtn");
   const chatLog = document.getElementById("chatLog");
   const chatInput = document.getElementById("chatInput");
@@ -77,6 +79,8 @@
     pingTimer: 0,
     reconnectTimer: 0,
     roomDirectory: null,
+    leaderboardPreviewTimer: 0,
+    leaderboardPreviewRequestId: 0,
     perf: { frames: 0, fps: 0, lastFpsAt: performance.now(), snapshots: 0, snapshotRate: 0, lastSnapshotRateAt: performance.now() },
     startedAt: performance.now()
   };
@@ -280,6 +284,7 @@
     roomInput.value = sanitizeRoom(code);
     updateStatsLink();
     renderRoomDirectory();
+    scheduleLeaderboardPreview();
     haptic(6);
   }
 
@@ -300,6 +305,60 @@
     const bytes = new Uint8Array(3);
     crypto.getRandomValues(bytes);
     return `arena-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  function leaderboardUrlForRoom(room) {
+    return `/api/leaderboard?room=${encodeURIComponent(sanitizeRoom(room || "public"))}`;
+  }
+
+  function renderLeaderboardPreview(data = null) {
+    if (!lobbyLeaderboard || !lobbyLeaderboardMeta) return;
+    const room = selectedRoom();
+    lobbyLeaderboardMeta.textContent = room;
+    lobbyLeaderboard.replaceChildren();
+
+    const entries = Array.isArray(data?.entries) ? data.entries.slice(0, 3) : [];
+    if (!entries.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "No completed rounds yet";
+      lobbyLeaderboard.append(empty);
+      return;
+    }
+
+    for (const entry of entries) {
+      const row = document.createElement("li");
+      const name = document.createElement("strong");
+      name.textContent = `#${entry.rank || "?"} ${entry.name || "Player"}`;
+      const stats = document.createElement("span");
+      stats.textContent = `${entry.wins || 0}W · best ${entry.bestScore || 0}`;
+      row.append(name, stats);
+      lobbyLeaderboard.append(row);
+    }
+  }
+
+  async function refreshLeaderboardPreview() {
+    if (!lobbyLeaderboard || state.joined) return;
+    const requestId = ++state.leaderboardPreviewRequestId;
+    const room = selectedRoom();
+    renderLeaderboardPreview(null);
+    try {
+      const response = await fetch(leaderboardUrlForRoom(room), { cache: "no-store" });
+      if (!response.ok) throw new Error("leaderboard unavailable");
+      const data = await response.json();
+      if (requestId === state.leaderboardPreviewRequestId) {
+        renderLeaderboardPreview(data);
+      }
+    } catch {
+      if (requestId === state.leaderboardPreviewRequestId) {
+        renderLeaderboardPreview(null);
+      }
+    }
+  }
+
+  function scheduleLeaderboardPreview() {
+    clearTimeout(state.leaderboardPreviewTimer);
+    renderLeaderboardPreview(null);
+    state.leaderboardPreviewTimer = setTimeout(refreshLeaderboardPreview, 220);
   }
 
   function handleMessage(msg) {
@@ -907,6 +966,7 @@
     roomInput.value = sanitizeRoom(roomInput.value);
     updateStatsLink();
     renderRoomDirectory();
+    scheduleLeaderboardPreview();
     settleViewport();
   });
 
@@ -926,11 +986,13 @@
     roomInput.value = sanitizeRoom(roomInput.value);
     updateStatsLink();
     renderRoomDirectory();
+    scheduleLeaderboardPreview();
   });
   copyRoomBtn?.addEventListener("click", async () => {
     roomInput.value = sanitizeRoom(roomInput.value);
     updateStatsLink();
     renderRoomDirectory();
+    scheduleLeaderboardPreview();
     haptic(8);
     try {
       await navigator.clipboard.writeText(roomLink());
@@ -943,6 +1005,7 @@
     roomInput.value = generateRoomCode();
     updateStatsLink();
     renderRoomDirectory();
+    scheduleLeaderboardPreview();
     haptic(8);
   });
   refreshRoomsBtn?.addEventListener("click", () => {
@@ -1396,6 +1459,8 @@
   updateEffectsButton();
   renderRoomDirectory();
   refreshRooms();
+  renderLeaderboardPreview();
+  refreshLeaderboardPreview();
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/sw.js").catch(() => {

@@ -40,16 +40,23 @@ test("join panel supports room discovery and private room generation", async ({ 
   await page.goto("/");
   await expect(page.locator("#roomList")).toBeVisible();
   await expect(page.locator('[data-room-code="public"]')).toBeVisible();
+  await expect(page.locator(".lobby-leaderboard")).toBeVisible();
+  await expect(page.locator("#lobbyLeaderboardMeta")).toHaveText("public");
 
   await page.locator("#newRoomBtn").click();
   await expect(page.locator("#roomInput")).toHaveValue(/^arena-[a-f0-9]{6}$/);
+  await expect(page.locator("#lobbyLeaderboardMeta")).toHaveText(/^arena-[a-f0-9]{6}$/);
 
   await page.locator('[data-room-code="public"]').click();
   await expect(page.locator("#roomInput")).toHaveValue("public");
+  await expect(page.locator("#lobbyLeaderboardMeta")).toHaveText("public");
 
   const rooms = await page.request.get("/api/rooms").then((res) => res.json());
   expect(rooms.service).toBe("vix-arena");
   expect(Array.isArray(rooms.rooms)).toBe(true);
+  const leaderboard = await page.request.get("/api/leaderboard?room=public").then((res) => res.json());
+  expect(leaderboard.room).toBe("public");
+  expect(Array.isArray(leaderboard.entries)).toBe(true);
 });
 
 test("browser websocket protocol accepts join and returns snapshots", async ({ page }) => {
