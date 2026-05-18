@@ -13,6 +13,7 @@ data/
 *.pid
 
 # Backups and generated artifacts
+.deploy-backups/
 *.bak
 *.bak.*
 *.tmp

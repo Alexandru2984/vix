@@ -102,8 +102,21 @@ GitHub Actions workflows live in `.github/workflows/`.
 
 - `CI`: installs system dependencies and Node dependencies, builds Release with Ninja, runs CTest, starts temporary localhost servers, verifies HTTP endpoints, metrics, security headers, WebSocket Origin handling, browser E2E, responsive/mobile layout, accessibility, PWA metadata/service-worker behavior, and a short WebSocket load smoke test.
 - `CodeQL`: builds the C++ application and runs GitHub CodeQL analysis on pushes, pull requests, weekly schedule, and manual dispatch.
+- `Deploy VPS`: manual production deploy. It runs CI in GitHub, SSHes into the VPS, pulls the selected branch with `git pull --ff-only`, optionally runs full CI again on the VPS, validates Nginx, restarts `vix-arena.service`, verifies local HTTP/API health, confirms localhost-only binding, and checks WSS through local Nginx.
 
 Dependabot is configured for weekly GitHub Actions updates in `.github/dependabot.yml`.
+
+### Manual VPS Deploy Workflow
+
+Add these repository secrets before using `Deploy VPS`:
+
+- `VPS_HOST`: SSH hostname or IP for the VPS.
+- `VPS_USER`: SSH user, normally `micu`.
+- `VPS_PORT`: SSH port, normally `22`.
+- `VPS_SSH_KEY`: private SSH key allowed to log in as `micu`.
+- `VPS_KNOWN_HOSTS`: output of `ssh-keyscan -p <port> <host>` for strict host checking.
+
+The VPS-side deploy script is `scripts/deploy_vps.sh`. It refuses a dirty worktree, does not commit or push code, and keeps a previous binary backup so it can restore the old service if post-restart checks fail.
 
 ## Environment
 

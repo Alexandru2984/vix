@@ -1,0 +1,127 @@
+name: Deploy VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy"
+        required: true
+        default: "main"
+      run_vps_ci:
+        description: "Run full CI again on the VPS before restart"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vix-arena-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify before deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            cmake \
+            curl \
+            libboost-system-dev \
+            libpqxx-dev \
+            ninja-build \
+            nlohmann-json3-dev \
+            pkg-config \
+            ripgrep
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run CI checks
+        env:
+          BUILD_DIR: build-ci
+          CMAKE_GENERATOR: Ninja
+          BUILD_TYPE: Release
+        run: ./scripts/ci.sh
+
+  deploy:
+    name: Deploy to VPS
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Prepare SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          test -n "${VPS_HOST}" || { echo "VPS_HOST secret is required"; exit 1; }
+          test -n "${VPS_SSH_KEY}" || { echo "VPS_SSH_KEY secret is required"; exit 1; }
+          test -n "${VPS_KNOWN_HOSTS}" || { echo "VPS_KNOWN_HOSTS secret is required"; exit 1; }
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/vix_deploy_key
+          chmod 600 ~/.ssh/vix_deploy_key
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run VPS deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_BRANCH: ${{ inputs.branch }}
+          RUN_VPS_CI: ${{ inputs.run_vps_ci }}
+        run: |
+          case "${DEPLOY_BRANCH}" in
+            *[!A-Za-z0-9._/-]*|*..*|/*)
+              echo "Invalid branch name: ${DEPLOY_BRANCH}"
+              exit 1
+              ;;
+          esac
+          user="${VPS_USER:-micu}"
+          port="${VPS_PORT:-22}"
+          ssh -i ~/.ssh/vix_deploy_key \
+            -p "${port}" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "${user}@${VPS_HOST}" \
+            "bash -se" <<EOF
+          set -euo pipefail
+          cd /home/micu/vix
+          if [[ ! -x scripts/deploy_vps.sh ]]; then
+            if [[ -n "\$(git status --porcelain)" ]]; then
+              echo "refusing bootstrap deploy: VPS worktree is dirty" >&2
+              git status --short >&2
+              exit 1
+            fi
+            git fetch --prune origin "${DEPLOY_BRANCH}"
+            current_branch="\$(git branch --show-current)"
+            if [[ "\${current_branch}" != "${DEPLOY_BRANCH}" ]]; then
+              git checkout "${DEPLOY_BRANCH}"
+            fi
+            git pull --ff-only origin "${DEPLOY_BRANCH}"
+          fi
+          VIX_DEPLOY_BRANCH="${DEPLOY_BRANCH}" VIX_RUN_CI_ON_DEPLOY="${RUN_VPS_CI}" ./scripts/deploy_vps.sh
+          EOF
