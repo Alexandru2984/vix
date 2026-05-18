@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-smoke:
+    name: Build, test, smoke, audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            cmake \
+            curl \
+            libboost-system-dev \
+            libpqxx-dev \
+            ninja-build \
+            nlohmann-json3-dev \
+            pkg-config \
+            ripgrep
+
+      - name: Run CI checks
+        env:
+          BUILD_DIR: build-ci
+          CMAKE_GENERATOR: Ninja
+          BUILD_TYPE: Release
+        run: ./scripts/ci.sh

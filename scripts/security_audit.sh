@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+fail() {
+  echo "security audit failed: $*" >&2
+  exit 1
+}
+
+require_text() {
+  local pattern="$1"
+  local path="$2"
+  rg -q "${pattern}" "${path}" || fail "missing '${pattern}' in ${path}"
+}
+
+require_absent() {
+  local pattern="$1"
+  local path="$2"
+  if rg -q "${pattern}" "${path}"; then
+    fail "unexpected '${pattern}' in ${path}"
+  fi
+}
+
+git check-ignore -q .env || fail ".env is not ignored by git"
+
+if [[ -f .env ]]; then
+  mode="$(stat -c '%a' .env)"
+  [[ "${mode}" == "600" || "${mode}" == "400" ]] || fail ".env permissions are ${mode}, expected 600 or 400"
+fi
+
+require_text 'APP_HOST=127\.0\.0\.1' README.md
+require_text 'ALLOW_MISSING_ORIGIN=false' README.md
+require_text 'WebSocket payloads are capped at 4096 bytes' public/docs.html
+require_text 'Content-Security-Policy' src/main.cpp
+require_text 'x_frame_options' src/main.cpp
+require_text 'X-Content-Type-Options' src/main.cpp
+require_text 'Referrer-Policy' src/main.cpp
+require_text 'Permissions-Policy' src/main.cpp
+require_text 'maxWsPayloadBytes' src/GameServer.cpp
+require_text 'allowMissingOrigin' src/main.cpp
+require_text 'HttpRateLimiter' src/main.cpp
+require_text 'token bucket' README.md
+require_text 'NoNewPrivileges=true' systemd/vix-arena.service.example
+require_text 'ProtectSystem=strict' systemd/vix-arena.service.example
+require_text 'ReadWritePaths=/home/micu/vix/data' systemd/vix-arena.service.example
+require_text 'CapabilityBoundingSet=' systemd/vix-arena.service.example
+require_text 'SystemCallFilter=@system-service' systemd/vix-arena.service.example
+
+require_absent 'APP_HOST=0\.0\.0\.0' systemd/vix-arena.service.example
+require_absent 'password *= *"[^"]+"' src public scripts docs README.md CMakeLists.txt systemd
+require_absent 'api[_-]?key *= *"[^"]+"' src public scripts docs README.md CMakeLists.txt systemd
+require_absent 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY' src public scripts docs README.md CMakeLists.txt systemd
+
+echo "security audit ok"

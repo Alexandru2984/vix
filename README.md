@@ -72,6 +72,12 @@ Available presets:
 ./scripts/check.sh
 ```
 
+For the full local CI gate:
+
+```bash
+./scripts/ci.sh
+```
+
 For the C++ unit suite only:
 
 ```bash
@@ -80,6 +86,15 @@ ctest --test-dir build --output-on-failure
 ```
 
 The current unit tests cover text validation, world bounds/collision/spawn behavior, protocol serialization, bad WebSocket payload handling, join flow, chat broadcast, rate limiting, and bot cleanup when the last human leaves.
+
+## CI
+
+GitHub Actions workflows live in `.github/workflows/`.
+
+- `CI`: installs system dependencies, builds Release with Ninja, runs CTest, starts a temporary localhost server, verifies HTTP endpoints, metrics, security headers, and WebSocket Origin handling, then runs `scripts/security_audit.sh`.
+- `CodeQL`: builds the C++ application and runs GitHub CodeQL analysis on pushes, pull requests, weekly schedule, and manual dispatch.
+
+Dependabot is configured for weekly GitHub Actions updates in `.github/dependabot.yml`.
 
 ## Environment
 
