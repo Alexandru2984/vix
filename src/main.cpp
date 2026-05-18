@@ -1,6 +1,7 @@
 #include <utility>
 
 #include <algorithm>
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/websocket.hpp>
@@ -15,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -97,6 +99,14 @@ namespace
   };
 
   HttpRateLimiter gHttpRateLimiter;
+  std::atomic<std::uint64_t> gHttpResponsesTotal{0};
+  std::atomic<std::uint64_t> gHttpDynamicRequestsTotal{0};
+  std::atomic<std::uint64_t> gHttpRateLimitRejectionsTotal{0};
+  std::atomic<std::uint64_t> gHttpResponses1xx{0};
+  std::atomic<std::uint64_t> gHttpResponses2xx{0};
+  std::atomic<std::uint64_t> gHttpResponses3xx{0};
+  std::atomic<std::uint64_t> gHttpResponses4xx{0};
+  std::atomic<std::uint64_t> gHttpResponses5xx{0};
 
   std::string trim(std::string value)
   {
@@ -304,6 +314,43 @@ namespace
     return std::string(target.substr(0, queryPos));
   }
 
+  void recordHttpResponse(http::status status)
+  {
+    ++gHttpResponsesTotal;
+    const auto code = static_cast<unsigned>(status);
+    if (code < 200)
+      ++gHttpResponses1xx;
+    else if (code < 300)
+      ++gHttpResponses2xx;
+    else if (code < 400)
+      ++gHttpResponses3xx;
+    else if (code < 500)
+      ++gHttpResponses4xx;
+    else
+      ++gHttpResponses5xx;
+  }
+
+  void appendMetric(std::ostringstream &out, const char *name, const char *help, const char *type, std::uint64_t value)
+  {
+    out << "# HELP " << name << ' ' << help << '\n';
+    out << "# TYPE " << name << ' ' << type << '\n';
+    out << name << ' ' << value << '\n';
+  }
+
+  std::string httpMetricsText()
+  {
+    std::ostringstream out;
+    appendMetric(out, "vix_arena_http_responses_total", "Total HTTP responses returned by the embedded server.", "counter", gHttpResponsesTotal.load());
+    appendMetric(out, "vix_arena_http_dynamic_requests_total", "Total dynamic HTTP endpoint requests subject to rate limiting.", "counter", gHttpDynamicRequestsTotal.load());
+    appendMetric(out, "vix_arena_http_rate_limit_rejections_total", "Total dynamic HTTP requests rejected by rate limiting.", "counter", gHttpRateLimitRejectionsTotal.load());
+    appendMetric(out, "vix_arena_http_responses_1xx_total", "Total 1xx HTTP responses.", "counter", gHttpResponses1xx.load());
+    appendMetric(out, "vix_arena_http_responses_2xx_total", "Total 2xx HTTP responses.", "counter", gHttpResponses2xx.load());
+    appendMetric(out, "vix_arena_http_responses_3xx_total", "Total 3xx HTTP responses.", "counter", gHttpResponses3xx.load());
+    appendMetric(out, "vix_arena_http_responses_4xx_total", "Total 4xx HTTP responses.", "counter", gHttpResponses4xx.load());
+    appendMetric(out, "vix_arena_http_responses_5xx_total", "Total 5xx HTTP responses.", "counter", gHttpResponses5xx.load());
+    return out.str();
+  }
+
   bool rateLimitedTarget(const std::string &target)
   {
     return target == "/health" ||
@@ -354,6 +401,7 @@ namespace
       std::string body,
       std::string contentType)
   {
+    recordHttpResponse(status);
     http::response<http::string_body> res{status, req.version()};
     res.set(http::field::server, "VixArena");
     res.set(http::field::content_type, contentType);
@@ -622,6 +670,7 @@ namespace
 
       if (rateLimitedTarget(target))
       {
+        ++gHttpDynamicRequestsTotal;
         std::string clientAddress = forwardedClientAddress(req_);
         if (clientAddress.empty())
         {
@@ -634,6 +683,7 @@ namespace
         }
         if (!gHttpRateLimiter.allow(clientAddress))
         {
+          ++gHttpRateLimitRejectionsTotal;
           res = makeResponse(req_, http::status::too_many_requests, "rate limit", "text/plain; charset=utf-8");
           res.set(http::field::retry_after, "1");
           auto self = shared_from_this();
@@ -679,7 +729,9 @@ namespace
       }
       else if (target == "/metrics")
       {
-        res = makeResponse(req_, http::status::ok, game_.metricsText(), "text/plain; version=0.0.4; charset=utf-8");
+        std::string metrics = game_.metricsText();
+        metrics += httpMetricsText();
+        res = makeResponse(req_, http::status::ok, std::move(metrics), "text/plain; version=0.0.4; charset=utf-8");
       }
       else
       {

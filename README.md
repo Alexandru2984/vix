@@ -203,6 +203,7 @@ Current metrics include:
 - process health and uptime
 - current humans, bots, and total connected players
 - WebSocket messages and bytes received/sent
+- HTTP responses by status class, dynamic HTTP requests, and HTTP rate-limit rejections
 - active WebSocket connections, distinct remote addresses, rejected connections, and protocol violations
 - full snapshots, delta snapshots, and snapshot bytes sent
 - rejected messages, rate-limit rejections, and send failures

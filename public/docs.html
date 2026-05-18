@@ -50,7 +50,7 @@
         <li><code>GET /api/rooms</code> active room summary. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.</li>
         <li><code>GET /api/leaderboard</code> persistent PostgreSQL leaderboard sorted by wins, best score, total score, and name. Use <code>?room=duel-room</code> for a room-scoped board.</li>
         <li><code>GET /api/matches</code> recent PostgreSQL match history. Use <code>?room=duel-room</code> for room-scoped history.</li>
-        <li><code>GET /metrics</code> Prometheus text metrics with player counts, WebSocket traffic, tick durations, rejected messages, pickups, quests, rounds, and PostgreSQL write health.</li>
+        <li><code>GET /metrics</code> Prometheus text metrics with player counts, HTTP response/rate-limit counters, WebSocket traffic, tick durations, rejected messages, pickups, quests, rounds, and PostgreSQL write health.</li>
         <li><code>GET /stats</code> public stats page with runtime counters, leaderboard, and match history.</li>
         <li><code>GET /docs</code> this page.</li>
       </ul>
