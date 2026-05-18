@@ -2213,17 +2213,31 @@ namespace arena
                         }}};
   }
 
-  nlohmann::json GameServer::stateJson() const
+  nlohmann::json GameServer::stateJson(const std::string &roomCode) const
   {
+    const std::string roomCodeNormalized = roomCode.empty() ? "public" : sanitizeRoomCode(roomCode);
     std::lock_guard<std::mutex> lock(mutex_);
-    const RoomState *publicRoom = roomStateLocked("public");
+    const RoomState *room = roomStateLocked(roomCodeNormalized);
     const RoomState emptyRoom;
-    const RoomState &roomRef = publicRoom ? *publicRoom : emptyRoom;
+    const RoomState &roomRef = room ? *room : emptyRoom;
+    std::size_t players = 0;
+    std::size_t humans = 0;
+    std::size_t bots = 0;
+    for (const auto &[_, player] : players_)
+    {
+      if (player.roomCode != roomCodeNormalized)
+      {
+        continue;
+      }
+      ++players;
+      player.bot ? ++bots : ++humans;
+    }
     return {
         {"service", "vix-arena"},
-        {"players", players_.size()},
-        {"humans", humanCountLocked()},
-        {"bots", botCountLocked()},
+        {"room", roomCodeNormalized},
+        {"players", players},
+        {"humans", humans},
+        {"bots", bots},
         {"world", worldSummary(world_)},
         {"orbs", orbsJsonLocked(roomRef)},
         {"powerups", powerupsJsonLocked(roomRef)},

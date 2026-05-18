@@ -39,7 +39,7 @@ namespace arena
 
     [[nodiscard]] nlohmann::json healthJson() const;
     [[nodiscard]] nlohmann::json readyJson() const;
-    [[nodiscard]] nlohmann::json stateJson() const;
+    [[nodiscard]] nlohmann::json stateJson(const std::string &roomCode = {}) const;
     [[nodiscard]] nlohmann::json statsJson() const;
     [[nodiscard]] nlohmann::json roomsJson() const;
     [[nodiscard]] nlohmann::json leaderboardJson(const std::string &roomCode = {}) const;

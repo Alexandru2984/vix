@@ -180,7 +180,7 @@ Server messages:
 
 - `GET /health`: service status, player counts, uptime.
 - `GET /ready`: readiness status, including PostgreSQL configuration and schema version.
-- `GET /api/state`: public game state, world metadata, pickups, round, events.
+- `GET /api/state`: public game state, world metadata, pickups, round, events. Add `?room=duel-room` when you already know a room code and want that room's live state.
 - `GET /api/stats`: operational counters.
 - `GET /api/rooms`: active room summary. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.
 - `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Add `?room=duel-room` for a room-scoped board. Uses PostgreSQL when enabled.

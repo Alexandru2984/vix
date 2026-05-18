@@ -305,6 +305,13 @@ namespace
       require(player.value("name", "") != "Alice", "bravo room should not see alpha player");
     }
 
+    const auto alphaState = server.stateJson("alpha-room");
+    requireEq(alphaState.value("room", ""), std::string("alpha-room"), "room state should echo requested room");
+    requireEq(alphaState.value("humans", 0), 1, "room state should count only requested room humans");
+    const auto publicState = server.stateJson();
+    requireEq(publicState.value("room", ""), std::string("public"), "default state should remain public room");
+    requireEq(publicState.value("humans", 0), 0, "default state should not count private room humans");
+
     const std::size_t beforeBravoMessages = bravo.messages.size();
     server.onMessage(alpha.connection.get(), R"({"type":"chat","message":"alpha only"})");
     require(bravo.messages.size() == beforeBravoMessages, "chat should stay inside source room");

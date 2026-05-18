@@ -530,7 +530,7 @@ namespace
       }
       else if (target == "/api/state")
       {
-        res = makeResponse(req_, http::status::ok, game_.stateJson().dump(), "application/json; charset=utf-8");
+        res = makeResponse(req_, http::status::ok, game_.stateJson(roomFilter).dump(), "application/json; charset=utf-8");
       }
       else if (target == "/api/stats")
       {

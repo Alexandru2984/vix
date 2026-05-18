@@ -45,7 +45,7 @@
         <li><code>GET /</code> game page.</li>
         <li><code>GET /health</code> health JSON with service status, player count, and uptime.</li>
         <li><code>GET /ready</code> readiness JSON with PostgreSQL enabled state, schema version, queued writes, and failed writes.</li>
-        <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, powerups, round state, and control zone.</li>
+        <li><code>GET /api/state</code> sanitized world state with player count, world size, obstacles, orbs, powerups, round state, and control zone. Use <code>?room=duel-room</code> when you already know a room code and want that room's live state.</li>
         <li><code>GET /api/stats</code> runtime counters, human/bot player counts, tick target, pickups, rounds, control-zone points, and persistence health.</li>
         <li><code>GET /api/rooms</code> active room summary. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.</li>
         <li><code>GET /api/leaderboard</code> persistent PostgreSQL leaderboard sorted by wins, best score, total score, and name. Use <code>?room=duel-room</code> for a room-scoped board.</li>
