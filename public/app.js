@@ -72,6 +72,15 @@
     startedAt: performance.now()
   };
 
+  function haptic(pattern = 12) {
+    if (!window.matchMedia("(pointer: coarse)").matches || !("vibrate" in navigator)) return;
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      // Haptics are optional and unsupported on several browsers.
+    }
+  }
+
   function resize() {
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -89,12 +98,11 @@
   function setAppHeight(force = false) {
     const visualHeight = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
     const fallbackHeight = Math.round(window.innerHeight || visualHeight);
-    const nextHeight = Math.max(320, fallbackHeight);
-    const inputFocused = document.activeElement === chatInput || document.activeElement === nameInput;
-    const previousHeight = state.layoutHeight || nextHeight;
-    const keyboardOpen = inputFocused && (visualHeight < previousHeight * 0.82 || nextHeight < previousHeight * 0.82);
+    const inputFocused = document.activeElement === chatInput || document.activeElement === nameInput || document.activeElement === roomInput;
+    const keyboardOpen = inputFocused && visualHeight < fallbackHeight * 0.86;
+    const nextHeight = Math.max(320, keyboardOpen ? visualHeight : fallbackHeight);
 
-    if (force || !state.layoutHeight || !keyboardOpen || nextHeight > state.layoutHeight) {
+    if (force || state.layoutHeight !== nextHeight) {
       state.layoutHeight = nextHeight;
       document.documentElement.style.setProperty("--app-height", `${state.layoutHeight}px`);
     }
@@ -593,11 +601,13 @@
 
   function castAbility(ability) {
     if (!state.joined) return;
+    haptic(10);
     send({ type: "ability", ability });
   }
 
   function sendQuickPing(message) {
     if (!state.joined) return;
+    haptic(8);
     send({ type: "chat", message });
   }
 
@@ -648,6 +658,7 @@
     if (state.touchPointerId !== null) return;
     event.preventDefault();
     if (floating) positionFloatingStick(event);
+    haptic(6);
     state.touchPointerId = event.pointerId;
     state.touchCapture = floating ? arenaWrap : touchStick;
     try {
@@ -769,6 +780,7 @@
   });
 
   joinBtn.addEventListener("click", () => {
+    haptic(10);
     state.joined = true;
     sendJoin();
   });
@@ -786,6 +798,7 @@
   copyRoomBtn?.addEventListener("click", async () => {
     roomInput.value = sanitizeRoom(roomInput.value);
     updateStatsLink();
+    haptic(8);
     try {
       await navigator.clipboard.writeText(roomLink());
       appendSystem("Room link copied");
@@ -798,6 +811,7 @@
   shieldBtn.addEventListener("click", () => castAbility("shield"));
   magnetBtn.addEventListener("click", () => castAbility("magnet"));
   soundBtn.addEventListener("click", () => {
+    haptic(8);
     state.soundEnabled = !state.soundEnabled;
     localStorage.setItem("vix.sound", state.soundEnabled ? "on" : "off");
     if (state.soundEnabled) {
@@ -835,6 +849,7 @@
   });
 
   mobileChatBtn.addEventListener("click", () => {
+    haptic(8);
     document.body.classList.toggle("show-chat");
     if (document.body.classList.contains("show-chat")) {
       clearChatUnread();
@@ -846,6 +861,7 @@
   });
 
   mobileInfoBtn.addEventListener("click", () => {
+    haptic(8);
     document.body.classList.toggle("show-panels");
   });
 

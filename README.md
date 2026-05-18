@@ -2,7 +2,7 @@
 
 VixArena is a real-time 2D multiplayer arena deployed at `https://vix.micutu.com`. The backend is a C++20 Boost.Beast HTTP/WebSocket server with an authoritative in-memory game loop, bots, abilities, chat, objectives, and a browser canvas frontend.
 
-The production service binds to `127.0.0.1` and is exposed through Nginx and Cloudflare.
+The production service binds to `127.0.0.1` and is exposed through Nginx and Cloudflare. Operational endpoints such as `/ready` and `/metrics` are intended for localhost/Nginx-local access in production.
 
 ## Quick Start
 
@@ -179,13 +179,13 @@ Server messages:
 ## API
 
 - `GET /health`: service status, player counts, uptime.
-- `GET /ready`: readiness status, including PostgreSQL configuration and schema version.
+- `GET /ready`: readiness status, including PostgreSQL configuration and schema version. In production Nginx allows this endpoint only from localhost.
 - `GET /api/state`: public game state, world metadata, pickups, round, events. Add `?room=duel-room` when you already know a room code and want that room's live state.
 - `GET /api/stats`: operational counters. Add `?room=duel-room` for live player/round counts scoped to a known room while keeping process-level counters visible.
 - `GET /api/rooms`: active room summary. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.
 - `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Add `?room=duel-room` for a room-scoped board. Uses PostgreSQL when enabled.
 - `GET /api/matches`: recent persisted round results. Add `?room=duel-room` for room-scoped history. Uses PostgreSQL when enabled.
-- `GET /metrics`: Prometheus text metrics.
+- `GET /metrics`: Prometheus text metrics. In production Nginx allows this endpoint only from localhost.
 - `GET /stats`: public stats page with leaderboard and match history.
 - `GET /docs`: browser documentation page.
 - `GET /`: game frontend.
@@ -251,6 +251,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 
 - The production app binds only to localhost.
 - Nginx handles the public TLS endpoint.
+- Nginx restricts `/ready` and `/metrics` to localhost access and hides duplicated upstream security headers.
 - WebSocket browser Origins are checked against `ALLOWED_ORIGINS` and `PUBLIC_URL`.
 - Missing WebSocket Origin headers are rejected in production.
 - WebSocket connections are capped per remote address before entering the arena.
@@ -258,7 +259,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 - Repeated invalid WebSocket protocol messages close the connection.
 - Dynamic HTTP endpoints use a lightweight per-client token bucket rate limit.
 - Per-client WebSocket outboxes are capped to avoid unbounded memory growth.
-- The app handles `SIGTERM`/`SIGINT` for graceful shutdown under systemd.
+- The app handles `SIGTERM`/`SIGINT` for graceful shutdown under a hardened systemd unit with no Linux capabilities, `NoNewPrivileges`, `ProtectSystem=strict`, namespace restrictions, syscall filtering, hidden process visibility, and write access limited to `/home/micu/vix/data`.
 - HTTP responses include baseline security headers: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`.
 - Display names and chat messages are length-limited and cleaned of control characters.
 - WebSocket payload size is capped before JSON parsing.

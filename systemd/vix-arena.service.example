@@ -9,27 +9,37 @@ User=micu
 Group=micu
 WorkingDirectory=/home/micu/vix
 EnvironmentFile=/home/micu/vix/.env
-Environment=DATA_DIR=/var/lib/vix-arena
 ExecStart=/home/micu/vix/build/vix-arena
 Restart=on-failure
 RestartSec=3
+
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=read-only
-ReadOnlyPaths=/home/micu/vix
-StateDirectory=vix-arena
+ReadWritePaths=/home/micu/vix/data
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
 RestrictSUIDSGID=true
+RestrictRealtime=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-CapabilityBoundingSet=
+RemoveIPC=true
+UMask=0077
+ProtectProc=invisible
+ProcSubset=pid
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
 
 [Install]
 WantedBy=multi-user.target
