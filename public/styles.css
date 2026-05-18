@@ -125,6 +125,21 @@ h1 {
   color: var(--good);
 }
 
+.metric-button {
+  height: 30px;
+  padding: 0 9px;
+  border-color: var(--line);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+}
+
+.metric-button[aria-pressed="true"] {
+  border-color: rgba(122, 245, 155, 0.42);
+  color: var(--good);
+  background: rgba(122, 245, 155, 0.10);
+}
+
 .arena-wrap {
   position: relative;
   min-height: 0;
@@ -1061,6 +1076,8 @@ td {
   }
 
   .metrics span:nth-of-type(6),
+  .metrics span:nth-of-type(8),
+  .metrics span:nth-of-type(9),
   .metrics .top-link {
     display: none;
   }

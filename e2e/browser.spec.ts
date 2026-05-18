@@ -24,6 +24,18 @@ test("player can join and canvas renders game state", async ({ page }, testInfo)
   await saveViewportScreenshot(page, testInfo, `arena-${testInfo.project.name}`);
 });
 
+test("client performance HUD reports realtime render and network rates", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only performance HUD check");
+
+  await joinArena(page, "Perf");
+  await expect(page.locator("#fps")).not.toHaveText("--", { timeout: 5_000 });
+  await expect(page.locator("#snapshotRate")).not.toHaveText("--", { timeout: 5_000 });
+  await expect(page.locator("#effectsBtn")).toHaveText("FX on");
+  await page.locator("#effectsBtn").click();
+  await expect(page.locator("#effectsBtn")).toHaveText("FX low");
+  await expect(page.locator("#effectsBtn")).toHaveAttribute("aria-pressed", "false");
+});
+
 test("join panel supports room discovery and private room generation", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#roomList")).toBeVisible();

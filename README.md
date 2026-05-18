@@ -133,7 +133,8 @@ DATABASE_URL=postgresql:///vix_arena
 - WebSocket protocol for join, input, abilities, chat, ping/pong, and snapshots.
 - Bots fill the arena for solo play when humans are connected.
 - Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, room browser, objective markers, and score feedback.
-- Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, and connection metrics.
+- Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, FPS/snapshot-rate indicators, and connection metrics.
+- Reduced-effects mode for lower-motion or lower-power clients.
 - PWA metadata, app icons, and a conservative service worker for static assets without caching live API/WebSocket traffic.
 - PostgreSQL-backed leaderboard and recent match history, with JSON-on-disk fallback.
 - Public stats page for runtime counters, leaderboard, and recent matches.
@@ -299,7 +300,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 ## Current Limitations
 
 - Private rooms are invite-by-link room codes, not password-protected rooms.
-- CI is active for build, smoke, security audit, browser E2E, responsive/mobile checks, accessibility, PWA checks, load smoke, and CodeQL.
+- CI is active for build, smoke, security audit, browser E2E, responsive/mobile checks, accessibility, PWA checks, client performance HUD checks, load smoke, and CodeQL.
 - PostgreSQL persistence tracks completed rounds and participant stats, not full accounts or long-term player identity.
 - No binary protocol yet.
 - Horizontal scaling would require external state or pub/sub.

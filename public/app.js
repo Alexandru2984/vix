@@ -9,6 +9,9 @@
   const roundTimeEl = document.getElementById("roundTime");
   const boostEl = document.getElementById("boost");
   const pingEl = document.getElementById("ping");
+  const fpsEl = document.getElementById("fps");
+  const snapshotRateEl = document.getElementById("snapshotRate");
+  const effectsBtn = document.getElementById("effectsBtn");
   const statsLink = document.getElementById("statsLink");
   const joinPanel = document.getElementById("joinPanel");
   const nameInput = document.getElementById("nameInput");
@@ -64,6 +67,7 @@
     particles: [],
     trails: [],
     soundEnabled: localStorage.getItem("vix.sound") === "on",
+    reducedEffects: localStorage.getItem("vix.effects") === "reduced" || window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     audio: null,
     activeObjective: null,
     camera: { x: 1000, y: 600 },
@@ -73,6 +77,7 @@
     pingTimer: 0,
     reconnectTimer: 0,
     roomDirectory: null,
+    perf: { frames: 0, fps: 0, lastFpsAt: performance.now(), snapshots: 0, snapshotRate: 0, lastSnapshotRateAt: performance.now() },
     startedAt: performance.now()
   };
 
@@ -310,6 +315,7 @@
       joinPanel.classList.add("hidden");
       state.joined = true;
     } else if (msg.type === "snapshot") {
+      recordSnapshotMessage();
       rememberSnapshotMeta(msg);
       applySnapshot(msg.players || []);
       state.orbs = Array.isArray(msg.orbs) ? msg.orbs : state.orbs;
@@ -319,6 +325,7 @@
       applyEvents(msg.events || []);
       updateRoundHud();
     } else if (msg.type === "snapshot_delta") {
+      recordSnapshotMessage();
       applySnapshotDelta(msg);
     } else if (msg.type === "chat") {
       appendChat(msg.from || "server", msg.message || "");
@@ -352,6 +359,31 @@
     if (typeof msg.snapshotId === "number") state.lastSnapshotId = msg.snapshotId;
     if (typeof msg.tick === "number") state.lastServerTick = msg.tick;
     if (typeof msg.serverTimeMs === "number") state.lastServerTimeMs = msg.serverTimeMs;
+  }
+
+  function recordSnapshotMessage() {
+    state.perf.snapshots += 1;
+  }
+
+  function updatePerformanceHud(now) {
+    state.perf.frames += 1;
+    if (now - state.perf.lastFpsAt >= 1000) {
+      state.perf.fps = Math.round((state.perf.frames * 1000) / Math.max(1, now - state.perf.lastFpsAt));
+      state.perf.frames = 0;
+      state.perf.lastFpsAt = now;
+      fpsEl.textContent = String(state.perf.fps);
+    }
+    if (now - state.perf.lastSnapshotRateAt >= 1000) {
+      state.perf.snapshotRate = Math.round((state.perf.snapshots * 1000) / Math.max(1, now - state.perf.lastSnapshotRateAt));
+      state.perf.snapshots = 0;
+      state.perf.lastSnapshotRateAt = now;
+      snapshotRateEl.textContent = String(state.perf.snapshotRate);
+    }
+  }
+
+  function updateEffectsButton() {
+    effectsBtn.textContent = state.reducedEffects ? "FX low" : "FX on";
+    effectsBtn.setAttribute("aria-pressed", String(!state.reducedEffects));
   }
 
   function mergeById(current, upserts, removedIds) {
@@ -498,6 +530,7 @@
   }
 
   function burstParticles(x, y, color, count) {
+    if (state.reducedEffects) return;
     const now = performance.now();
     for (let i = 0; i < count; i += 1) {
       const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
@@ -935,6 +968,17 @@
     }
     updateAbilityHud(state.players.get(state.localId));
   });
+  effectsBtn.addEventListener("click", () => {
+    haptic(6);
+    state.reducedEffects = !state.reducedEffects;
+    localStorage.setItem("vix.effects", state.reducedEffects ? "reduced" : "full");
+    if (state.reducedEffects) {
+      state.floaters = [];
+      state.particles = [];
+      state.trails = [];
+    }
+    updateEffectsButton();
+  });
   document.querySelectorAll(".ping-button").forEach((button) => {
     button.addEventListener("click", () => sendQuickPing(button.dataset.ping || "Ping"));
   });
@@ -985,7 +1029,7 @@
     for (const [id, target] of state.players) {
       const rp = state.renderPlayers.get(id) || { ...target };
       const moved = Math.hypot((target.x || 0) - (rp.x || 0), (target.y || 0) - (rp.y || 0)) > 4;
-      if (moved && Math.random() < 0.45) {
+      if (!state.reducedEffects && moved && Math.random() < 0.45) {
         state.trails.push({
           x: rp.x,
           y: rp.y,
@@ -1122,6 +1166,10 @@
   }
 
   function drawFloaters(now) {
+    if (state.reducedEffects) {
+      state.floaters = [];
+      return;
+    }
     state.floaters = state.floaters.filter((floater) => now - floater.createdAt < 1100);
     for (const floater of state.floaters) {
       const age = now - floater.createdAt;
@@ -1139,6 +1187,10 @@
   }
 
   function drawTrails(now) {
+    if (state.reducedEffects) {
+      state.trails = [];
+      return;
+    }
     state.trails = state.trails.filter((trail) => now - trail.createdAt < trail.ttl);
     for (const trail of state.trails) {
       const progress = (now - trail.createdAt) / trail.ttl;
@@ -1153,6 +1205,10 @@
   }
 
   function drawParticles(now) {
+    if (state.reducedEffects) {
+      state.particles = [];
+      return;
+    }
     state.particles = state.particles.filter((particle) => now - particle.createdAt < particle.ttl);
     for (const particle of state.particles) {
       const age = now - particle.createdAt;
@@ -1170,6 +1226,7 @@
 
   function render() {
     const now = performance.now();
+    updatePerformanceHud(now);
     resize();
     updateRenderPlayers();
 
@@ -1336,6 +1393,7 @@
   resize();
   connect();
   updateStatsLink();
+  updateEffectsButton();
   renderRoomDirectory();
   refreshRooms();
   if ("serviceWorker" in navigator) {
