@@ -14,6 +14,9 @@
   const nameInput = document.getElementById("nameInput");
   const roomInput = document.getElementById("roomInput");
   const copyRoomBtn = document.getElementById("copyRoomBtn");
+  const newRoomBtn = document.getElementById("newRoomBtn");
+  const refreshRoomsBtn = document.getElementById("refreshRoomsBtn");
+  const roomList = document.getElementById("roomList");
   const joinBtn = document.getElementById("joinBtn");
   const chatLog = document.getElementById("chatLog");
   const chatInput = document.getElementById("chatInput");
@@ -69,6 +72,7 @@
     canvasPixelHeight: 0,
     pingTimer: 0,
     reconnectTimer: 0,
+    roomDirectory: null,
     startedAt: performance.now()
   };
 
@@ -208,6 +212,89 @@
     if (!statsLink) return;
     const room = sanitizeRoom(roomInput?.value || state.room || "public");
     statsLink.href = room === "public" ? "/stats" : `/stats?room=${encodeURIComponent(room)}`;
+  }
+
+  function selectedRoom() {
+    return sanitizeRoom(roomInput?.value || state.room || "public");
+  }
+
+  function roomMetricLabel(room) {
+    const humans = Number(room?.humans || 0);
+    const bots = Number(room?.bots || 0);
+    const players = Number(room?.players || humans + bots);
+    const parts = [`${players} online`];
+    if (humans > 0) parts.push(`${humans} human${humans === 1 ? "" : "s"}`);
+    if (bots > 0) parts.push(`${bots} bot${bots === 1 ? "" : "s"}`);
+    return parts.join(" · ");
+  }
+
+  function renderRoomDirectory(data = state.roomDirectory) {
+    if (!roomList) return;
+    const currentRoom = selectedRoom();
+    const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
+    const listedRooms = rooms.filter((room) => room && room.listed && typeof room.code === "string");
+    const privateSummary = rooms.find((room) => room && !room.listed && Number(room.roomCount || 0) > 0);
+
+    roomList.replaceChildren();
+    const publicRoom = listedRooms.find((room) => room.code === "public") || { code: "public", players: 0, humans: 0, bots: 0 };
+    const orderedRooms = [publicRoom, ...listedRooms.filter((room) => room.code !== "public")];
+
+    for (const room of orderedRooms) {
+      const code = sanitizeRoom(room.code);
+      const button = document.createElement("button");
+      button.className = `room-card${code === currentRoom ? " selected" : ""}`;
+      button.type = "button";
+      button.dataset.roomCode = code;
+      const name = document.createElement("span");
+      name.textContent = code === "public" ? "Public arena" : code;
+      const metric = document.createElement("strong");
+      metric.textContent = roomMetricLabel(room);
+      button.append(name, metric);
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectRoomCode(code);
+      });
+      roomList.append(button);
+    }
+
+    if (privateSummary) {
+      const row = document.createElement("div");
+      row.className = "room-card private-summary";
+      const name = document.createElement("span");
+      const count = Number(privateSummary.roomCount || 0);
+      name.textContent = `${count} private ${count === 1 ? "room" : "rooms"}`;
+      const metric = document.createElement("strong");
+      metric.textContent = roomMetricLabel(privateSummary);
+      row.append(name, metric);
+      roomList.append(row);
+    }
+  }
+
+  function selectRoomCode(code) {
+    if (!roomInput) return;
+    roomInput.value = sanitizeRoom(code);
+    updateStatsLink();
+    renderRoomDirectory();
+    haptic(6);
+  }
+
+  async function refreshRooms() {
+    if (!roomList || state.joined) return;
+    try {
+      const response = await fetch("/api/rooms", { cache: "no-store" });
+      if (!response.ok) throw new Error("rooms unavailable");
+      state.roomDirectory = await response.json();
+      renderRoomDirectory();
+    } catch {
+      state.roomDirectory = null;
+      renderRoomDirectory();
+    }
+  }
+
+  function generateRoomCode() {
+    const bytes = new Uint8Array(3);
+    crypto.getRandomValues(bytes);
+    return `arena-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
   }
 
   function handleMessage(msg) {
@@ -786,6 +873,7 @@
   roomInput?.addEventListener("blur", () => {
     roomInput.value = sanitizeRoom(roomInput.value);
     updateStatsLink();
+    renderRoomDirectory();
     settleViewport();
   });
 
@@ -804,10 +892,12 @@
   roomInput?.addEventListener("input", () => {
     roomInput.value = sanitizeRoom(roomInput.value);
     updateStatsLink();
+    renderRoomDirectory();
   });
   copyRoomBtn?.addEventListener("click", async () => {
     roomInput.value = sanitizeRoom(roomInput.value);
     updateStatsLink();
+    renderRoomDirectory();
     haptic(8);
     try {
       await navigator.clipboard.writeText(roomLink());
@@ -815,6 +905,21 @@
     } catch {
       appendSystem(roomLink());
     }
+  });
+  newRoomBtn?.addEventListener("click", () => {
+    roomInput.value = generateRoomCode();
+    updateStatsLink();
+    renderRoomDirectory();
+    haptic(8);
+  });
+  refreshRoomsBtn?.addEventListener("click", () => {
+    haptic(6);
+    refreshRooms();
+  });
+  roomList?.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-room-code]") : null;
+    if (!(button instanceof HTMLElement)) return;
+    selectRoomCode(button.dataset.roomCode || "public");
   });
 
   dashBtn.addEventListener("click", () => castAbility("dash"));
@@ -1219,6 +1324,7 @@
 
   setInterval(() => sendInput(true), 100);
   setInterval(() => send({ type: "ping", t: Date.now() }), 2000);
+  setInterval(refreshRooms, 10000);
 
   window.addEventListener("resize", () => {
     setAppHeight();
@@ -1230,6 +1336,8 @@
   resize();
   connect();
   updateStatsLink();
+  renderRoomDirectory();
+  refreshRooms();
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/sw.js").catch(() => {

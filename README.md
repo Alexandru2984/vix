@@ -132,7 +132,7 @@ DATABASE_URL=postgresql:///vix_arena
 - 20 ticks/sec authoritative game loop.
 - WebSocket protocol for join, input, abilities, chat, ping/pong, and snapshots.
 - Bots fill the arena for solo play when humans are connected.
-- Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, objective markers, and score feedback.
+- Contested control zone, Orb Run mini quest, leaderboard, minimap, event feed, room browser, objective markers, and score feedback.
 - Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, and connection metrics.
 - PWA metadata, app icons, and a conservative service worker for static assets without caching live API/WebSocket traffic.
 - PostgreSQL-backed leaderboard and recent match history, with JSON-on-disk fallback.
@@ -208,7 +208,7 @@ Server messages:
 - `GET /ready`: readiness status, including PostgreSQL configuration and schema version. In production Nginx allows this endpoint only from localhost.
 - `GET /api/state`: public game state, world metadata, pickups, round, events. Add `?room=duel-room` when you already know a room code and want that room's live state.
 - `GET /api/stats`: operational counters. Add `?room=duel-room` for live player/round counts scoped to a known room while keeping process-level counters visible.
-- `GET /api/rooms`: active room summary. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.
+- `GET /api/rooms`: active room summary used by the lobby room browser. Public is listed by code; invite-by-link room codes are hidden and exposed only as aggregate counts.
 - `GET /api/leaderboard`: persistent top players sorted by wins, best score, total score, and name. Add `?room=duel-room` for a room-scoped board. Uses PostgreSQL when enabled.
 - `GET /api/matches`: recent persisted round results. Add `?room=duel-room` for room-scoped history. Uses PostgreSQL when enabled.
 - `GET /metrics`: Prometheus text metrics. In production Nginx allows this endpoint only from localhost.

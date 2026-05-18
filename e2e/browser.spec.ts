@@ -24,6 +24,22 @@ test("player can join and canvas renders game state", async ({ page }, testInfo)
   await saveViewportScreenshot(page, testInfo, `arena-${testInfo.project.name}`);
 });
 
+test("join panel supports room discovery and private room generation", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#roomList")).toBeVisible();
+  await expect(page.locator('[data-room-code="public"]')).toBeVisible();
+
+  await page.locator("#newRoomBtn").click();
+  await expect(page.locator("#roomInput")).toHaveValue(/^arena-[a-f0-9]{6}$/);
+
+  await page.locator('[data-room-code="public"]').click();
+  await expect(page.locator("#roomInput")).toHaveValue("public");
+
+  const rooms = await page.request.get("/api/rooms").then((res) => res.json());
+  expect(rooms.service).toBe("vix-arena");
+  expect(Array.isArray(rooms.rooms)).toBe(true);
+});
+
 test("browser websocket protocol accepts join and returns snapshots", async ({ page }) => {
   await page.goto("/");
   const result = await page.evaluate(async () => {

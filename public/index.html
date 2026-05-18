@@ -76,6 +76,21 @@
             <input id="roomInput" maxlength="24" autocomplete="off" placeholder="public">
             <button id="copyRoomBtn" type="button">Link</button>
           </div>
+          <section class="room-browser" aria-labelledby="roomBrowserTitle">
+            <div class="room-browser-head">
+              <h3 id="roomBrowserTitle">Rooms</h3>
+              <div>
+                <button id="newRoomBtn" class="small-button" type="button">New</button>
+                <button id="refreshRoomsBtn" class="small-button" type="button">Refresh</button>
+              </div>
+            </div>
+            <div id="roomList" class="room-list" aria-live="polite">
+              <button class="room-card selected" type="button" data-room-code="public">
+                <span>Public</span>
+                <strong>0 online</strong>
+              </button>
+            </div>
+          </section>
           <div class="instructions">
             <span>WASD / arrow keys to move</span>
             <span>Touch joystick on mobile</span>
