@@ -255,6 +255,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 - WebSocket connections are capped per remote address before entering the arena.
 - WebSocket messages use a per-connection token bucket to reduce spam bursts.
 - Repeated invalid WebSocket protocol messages close the connection.
+- Dynamic HTTP endpoints use a lightweight per-client token bucket rate limit.
 - Per-client WebSocket outboxes are capped to avoid unbounded memory growth.
 - The app handles `SIGTERM`/`SIGINT` for graceful shutdown under systemd.
 - HTTP responses include baseline security headers: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`.

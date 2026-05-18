@@ -5,6 +5,7 @@
 #include <boost/beast.hpp>
 #include <boost/beast/websocket.hpp>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <csignal>
 #include <deque>
@@ -12,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <string_view>
@@ -33,12 +35,68 @@ namespace
 {
   constexpr std::size_t maxWsOutboxMessages = 128;
   constexpr std::size_t maxWsOutboxBytes = 1024 * 1024;
+  constexpr double httpRateLimitBurst = 180.0;
+  constexpr double httpRateLimitRefillPerSecond = 12.0;
+  constexpr std::chrono::minutes httpRateLimitIdleTtl{10};
 
   struct AppConfig
   {
     std::set<std::string> allowedOrigins;
     bool allowMissingOrigin{true};
   };
+
+  struct HttpRateLimitBucket
+  {
+    double tokens{httpRateLimitBurst};
+    std::chrono::steady_clock::time_point lastRefill{std::chrono::steady_clock::now()};
+  };
+
+  class HttpRateLimiter
+  {
+  public:
+    bool allow(const std::string &key)
+    {
+      const auto now = std::chrono::steady_clock::now();
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto &bucket = buckets_[key.empty() ? "unknown" : key];
+      const double elapsed = std::chrono::duration<double>(now - bucket.lastRefill).count();
+      bucket.tokens = std::min(httpRateLimitBurst, bucket.tokens + elapsed * httpRateLimitRefillPerSecond);
+      bucket.lastRefill = now;
+      if (bucket.tokens < 1.0)
+      {
+        cleanupLocked(now);
+        return false;
+      }
+      bucket.tokens -= 1.0;
+      cleanupLocked(now);
+      return true;
+    }
+
+  private:
+    void cleanupLocked(std::chrono::steady_clock::time_point now)
+    {
+      if (buckets_.size() < 4096)
+      {
+        return;
+      }
+      for (auto it = buckets_.begin(); it != buckets_.end();)
+      {
+        if (now - it->second.lastRefill > httpRateLimitIdleTtl)
+        {
+          it = buckets_.erase(it);
+        }
+        else
+        {
+          ++it;
+        }
+      }
+    }
+
+    std::mutex mutex_;
+    std::unordered_map<std::string, HttpRateLimitBucket> buckets_;
+  };
+
+  HttpRateLimiter gHttpRateLimiter;
 
   std::string trim(std::string value)
   {
@@ -246,6 +304,49 @@ namespace
     return std::string(target.substr(0, queryPos));
   }
 
+  bool rateLimitedTarget(const std::string &target)
+  {
+    return target == "/health" ||
+           target == "/ready" ||
+           target == "/metrics" ||
+           target.rfind("/api/", 0) == 0;
+  }
+
+  std::string firstForwardedAddress(std::string value)
+  {
+    if (const auto comma = value.find(','); comma != std::string::npos)
+    {
+      value.resize(comma);
+    }
+    value = trim(std::move(value));
+    if (value.size() > 96)
+    {
+      value.resize(96);
+    }
+    return value;
+  }
+
+  template <class Body, class Allocator>
+  std::string forwardedClientAddress(const http::request<Body, http::basic_fields<Allocator>> &req)
+  {
+    if (const auto it = req.find("CF-Connecting-IP"); it != req.end())
+    {
+      if (std::string value = firstForwardedAddress(std::string(it->value())); !value.empty())
+        return value;
+    }
+    if (const auto it = req.find("X-Real-IP"); it != req.end())
+    {
+      if (std::string value = firstForwardedAddress(std::string(it->value())); !value.empty())
+        return value;
+    }
+    if (const auto it = req.find("X-Forwarded-For"); it != req.end())
+    {
+      if (std::string value = firstForwardedAddress(std::string(it->value())); !value.empty())
+        return value;
+    }
+    return {};
+  }
+
   template <class Body, class Allocator>
   http::response<http::string_body> makeResponse(
       const http::request<Body, http::basic_fields<Allocator>> &req,
@@ -318,6 +419,10 @@ namespace
     template <class Body, class Allocator>
     void run(http::request<Body, http::basic_fields<Allocator>> req)
     {
+      if (std::string forwarded = forwardedClientAddress(req); !forwarded.empty())
+      {
+        client_->remoteAddress = std::move(forwarded);
+      }
       ws_.set_option(websocket::stream_base::timeout::suggested(beast::role_type::server));
       ws_.read_message_max(arena::maxWsPayloadBytes);
       ws_.set_option(websocket::stream_base::decorator(
@@ -514,6 +619,30 @@ namespace
       }
       const std::string rawRoomFilter = queryParam(query, "room");
       const std::string roomFilter = rawRoomFilter.empty() ? "" : arena::sanitizeRoomCode(rawRoomFilter);
+
+      if (rateLimitedTarget(target))
+      {
+        std::string clientAddress = forwardedClientAddress(req_);
+        if (clientAddress.empty())
+        {
+          beast::error_code endpointEc;
+          const auto endpoint = socket_.remote_endpoint(endpointEc);
+          if (!endpointEc)
+          {
+            clientAddress = endpoint.address().to_string();
+          }
+        }
+        if (!gHttpRateLimiter.allow(clientAddress))
+        {
+          res = makeResponse(req_, http::status::too_many_requests, "rate limit", "text/plain; charset=utf-8");
+          res.set(http::field::retry_after, "1");
+          auto self = shared_from_this();
+          auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
+          http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
+                            { self->onWrite(ec, sp->need_eof()); });
+          return;
+        }
+      }
 
       if (req_.method() != http::verb::get && req_.method() != http::verb::head)
       {
