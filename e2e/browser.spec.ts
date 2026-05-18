@@ -21,6 +21,7 @@ test("player can join and canvas renders game state", async ({ page }, testInfo)
   await expect(page.locator("#score")).toBeVisible();
   await expect(page.locator("#quest")).toBeVisible();
   await expect(page.locator("#roundTime")).toBeVisible();
+  await expect(page.locator("#roundSummary")).toBeHidden();
   await saveViewportScreenshot(page, testInfo, `arena-${testInfo.project.name}`);
 });
 

@@ -27,6 +27,11 @@
   const chatInput = document.getElementById("chatInput");
   const leaderboardEl = document.getElementById("leaderboard");
   const roundBanner = document.getElementById("roundBanner");
+  const roundSummary = document.getElementById("roundSummary");
+  const roundSummaryTitle = document.getElementById("roundSummaryTitle");
+  const roundSummaryList = document.getElementById("roundSummaryList");
+  const roundSummaryNext = document.getElementById("roundSummaryNext");
+  const roundSummaryClose = document.getElementById("roundSummaryClose");
   const eventFeed = document.getElementById("eventFeed");
   const touchStick = document.getElementById("touchStick");
   const touchKnob = document.getElementById("touchKnob");
@@ -81,6 +86,7 @@
     roomDirectory: null,
     leaderboardPreviewTimer: 0,
     leaderboardPreviewRequestId: 0,
+    dismissedRoundSummaryKey: "",
     perf: { frames: 0, fps: 0, lastFpsAt: performance.now(), snapshots: 0, snapshotRate: 0, lastSnapshotRateAt: performance.now() },
     startedAt: performance.now()
   };
@@ -685,6 +691,58 @@
     objectiveDistance.textContent = objective.realDist ? `${objective.detail} - ${objective.realDist}u` : objective.detail;
   }
 
+  function roundSummaryKey() {
+    return `${state.room}:${state.round.number}:${state.round.lastWinner?.id || state.round.lastWinner?.name || "none"}`;
+  }
+
+  function hideRoundSummary() {
+    if (!roundSummary) return;
+    roundSummary.classList.add("hidden");
+  }
+
+  function renderRoundSummary() {
+    if (!roundSummary || !roundSummaryTitle || !roundSummaryList || !roundSummaryNext) return;
+    if (!state.joined || state.round.phase !== "intermission") {
+      hideRoundSummary();
+      return;
+    }
+
+    const key = roundSummaryKey();
+    if (state.dismissedRoundSummaryKey === key) {
+      hideRoundSummary();
+      return;
+    }
+
+    const winner = state.round.lastWinner || {};
+    roundSummaryTitle.textContent = `${winner.name || "No winner"} won with ${winner.score || 0}`;
+    roundSummaryNext.textContent = `Next round in ${formatTime(state.round.secondsRemaining)}`;
+    roundSummaryList.replaceChildren();
+
+    const standings = Array.from(state.players.values())
+      .sort((a, b) => (b.score || 0) - (a.score || 0) || String(a.name || "").localeCompare(String(b.name || "")))
+      .slice(0, 5);
+
+    if (!standings.length) {
+      const row = document.createElement("li");
+      row.textContent = "No players scored this round";
+      roundSummaryList.append(row);
+    } else {
+      standings.forEach((player, index) => {
+        const row = document.createElement("li");
+        const rank = document.createElement("b");
+        rank.textContent = `#${index + 1}`;
+        const name = document.createElement("span");
+        name.textContent = `${player.name || "Player"}${player.bot ? " [BOT]" : ""}`;
+        const score = document.createElement("strong");
+        score.textContent = `${player.score || 0}`;
+        row.append(rank, name, score);
+        roundSummaryList.append(row);
+      });
+    }
+
+    roundSummary.classList.remove("hidden");
+  }
+
   function updateRoundHud() {
     roundTimeEl.textContent = formatTime(state.round.secondsRemaining);
     if (state.round.phase === "intermission") {
@@ -694,7 +752,9 @@
     } else {
       roundBanner.classList.add("hidden");
       roundBanner.textContent = "";
+      hideRoundSummary();
     }
+    renderRoundSummary();
   }
 
   function applyEvents(events) {
@@ -1041,6 +1101,11 @@
       state.trails = [];
     }
     updateEffectsButton();
+  });
+  roundSummaryClose?.addEventListener("click", () => {
+    state.dismissedRoundSummaryKey = roundSummaryKey();
+    hideRoundSummary();
+    haptic(6);
   });
   document.querySelectorAll(".ping-button").forEach((button) => {
     button.addEventListener("click", () => sendQuickPing(button.dataset.ping || "Ping"));

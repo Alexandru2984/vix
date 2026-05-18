@@ -36,6 +36,17 @@
       <section class="arena-wrap">
         <canvas id="arena" width="1280" height="720"></canvas>
         <div id="roundBanner" class="round-banner hidden"></div>
+        <section id="roundSummary" class="round-summary hidden" aria-labelledby="roundSummaryTitle" aria-live="polite">
+          <div class="round-summary-head">
+            <div>
+              <span>Round complete</span>
+              <h2 id="roundSummaryTitle">No winner yet</h2>
+            </div>
+            <button id="roundSummaryClose" class="small-button" type="button">Close</button>
+          </div>
+          <ol id="roundSummaryList" class="round-summary-list"></ol>
+          <p id="roundSummaryNext">Next round soon</p>
+        </section>
         <div id="objectiveHud" class="objective-hud">
           <span>Objective</span>
           <strong id="objectiveLabel">Join arena</strong>

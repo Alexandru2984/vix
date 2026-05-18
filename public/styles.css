@@ -662,6 +662,75 @@ td {
   color: var(--good);
 }
 
+.round-summary {
+  position: absolute;
+  left: 50%;
+  top: 82px;
+  width: min(420px, calc(100% - 36px));
+  padding: 14px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 204, 102, 0.32);
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.90);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.34);
+  z-index: 16;
+}
+
+.round-summary.hidden {
+  display: none;
+}
+
+.round-summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.round-summary-head span,
+.round-summary p {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.round-summary h2 {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.round-summary-list {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.round-summary-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid rgba(160, 180, 210, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.round-summary-list b,
+.round-summary-list strong {
+  color: var(--text);
+}
+
+.round-summary-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .objective-hud {
   position: absolute;
   left: 50%;
@@ -907,6 +976,20 @@ td {
     padding: 10px 12px;
     font-size: 13px;
     z-index: 15;
+  }
+
+  .round-summary {
+    top: 92px;
+    width: min(340px, calc(100% - 20px));
+    padding: 12px;
+  }
+
+  .round-summary h2 {
+    font-size: 16px;
+  }
+
+  .round-summary-list li {
+    padding: 6px 8px;
   }
 
   .objective-hud {
@@ -1204,6 +1287,21 @@ td {
     width: min(330px, calc(100% - 190px));
     display: none;
     grid-template-rows: minmax(80px, 112px) 40px;
+  }
+
+  .round-summary {
+    left: auto;
+    right: max(8px, env(safe-area-inset-right));
+    top: max(52px, calc(env(safe-area-inset-top) + 52px));
+    width: min(330px, 40vw);
+    max-height: calc(100% - 68px);
+    overflow: auto;
+    transform: none;
+  }
+
+  .round-summary-list {
+    gap: 5px;
+    margin: 8px 0;
   }
 
   body.show-chat .chat-panel {

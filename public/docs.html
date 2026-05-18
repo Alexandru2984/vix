@@ -24,7 +24,7 @@
   <body>
     <main class="doc">
       <h1>VixArena</h1>
-      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with PWA metadata, a room browser, lobby leaderboard preview, an objective HUD, minimap, edge target markers, score popups, FPS and snapshot-rate indicators, quick pings, sound toggle, reduced-effects mode, and touch controls.</p>
+      <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with PWA metadata, a room browser, lobby leaderboard preview, round summary overlay, an objective HUD, minimap, edge target markers, score popups, FPS and snapshot-rate indicators, quick pings, sound toggle, reduced-effects mode, and touch controls.</p>
 
       <h2>Controls</h2>
       <ul>
@@ -41,6 +41,7 @@
         <li>Complete Orb Run by collecting 3 orbs for a bonus.</li>
         <li>Grab violet speed boosts for temporary faster movement.</li>
         <li>Hold the green control zone for passive points. If multiple players contest it, scoring pauses.</li>
+        <li>At round end, the intermission overlay shows the winner and top round scores.</li>
         <li>Follow the objective HUD and edge markers to find nearby orbs, boosts, or the control zone.</li>
         <li><code>Enter</code> focuses chat.</li>
         <li><code>Esc</code> unfocuses chat.</li>

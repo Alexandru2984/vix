@@ -132,7 +132,7 @@ DATABASE_URL=postgresql:///vix_arena
 - 20 ticks/sec authoritative game loop.
 - WebSocket protocol for join, input, abilities, chat, ping/pong, and snapshots.
 - Bots fill the arena for solo play when humans are connected.
-- Contested control zone, Orb Run mini quest, leaderboard, lobby leaderboard preview, minimap, event feed, room browser, objective markers, and score feedback.
+- Contested control zone, Orb Run mini quest, leaderboard, lobby leaderboard preview, round summary overlay, minimap, event feed, room browser, objective markers, and score feedback.
 - Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, HUD, FPS/snapshot-rate indicators, and connection metrics.
 - Reduced-effects mode for lower-motion or lower-power clients.
 - PWA metadata, app icons, and a conservative service worker for static assets without caching live API/WebSocket traffic.
