@@ -40,9 +40,25 @@ jobs:
             pkg-config \
             ripgrep
 
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
       - name: Run CI checks
         env:
           BUILD_DIR: build-ci
           CMAKE_GENERATOR: Ninja
           BUILD_TYPE: Release
         run: ./scripts/ci.sh
+
+      - name: Upload browser artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

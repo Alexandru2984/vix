@@ -75,7 +75,16 @@ Available presets:
 For the full local CI gate:
 
 ```bash
+npm ci
+npx playwright install chromium
 ./scripts/ci.sh
+```
+
+Browser and load checks can also be run independently:
+
+```bash
+./scripts/e2e.sh
+./scripts/load_check.sh
 ```
 
 For the C++ unit suite only:
@@ -91,7 +100,7 @@ The current unit tests cover text validation, world bounds/collision/spawn behav
 
 GitHub Actions workflows live in `.github/workflows/`.
 
-- `CI`: installs system dependencies, builds Release with Ninja, runs CTest, starts a temporary localhost server, verifies HTTP endpoints, metrics, security headers, and WebSocket Origin handling, then runs `scripts/security_audit.sh`.
+- `CI`: installs system dependencies and Node dependencies, builds Release with Ninja, runs CTest, starts temporary localhost servers, verifies HTTP endpoints, metrics, security headers, WebSocket Origin handling, browser E2E, responsive/mobile layout, accessibility, and a short WebSocket load smoke test.
 - `CodeQL`: builds the C++ application and runs GitHub CodeQL analysis on pushes, pull requests, weekly schedule, and manual dispatch.
 
 Dependabot is configured for weekly GitHub Actions updates in `.github/dependabot.yml`.
@@ -288,7 +297,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 ## Current Limitations
 
 - Private rooms are invite-by-link room codes, not password-protected rooms.
-- No CI until billing is available; use `./scripts/check.sh` locally as the source of truth.
+- CI is active for build, smoke, security audit, browser E2E, responsive/mobile checks, accessibility, load smoke, and CodeQL.
 - PostgreSQL persistence tracks completed rounds and participant stats, not full accounts or long-term player identity.
 - No binary protocol yet.
 - Horizontal scaling would require external state or pub/sub.

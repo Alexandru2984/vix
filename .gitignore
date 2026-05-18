@@ -16,6 +16,9 @@ data/
 *.bak
 *.bak.*
 *.tmp
+node_modules/
+playwright-report/
+test-results/
 
 # Editor/OS files
 .DS_Store

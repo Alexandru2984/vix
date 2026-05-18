@@ -1,0 +1,32 @@
+{
+  "name": "vix-arena",
+  "version": "1.0.0",
+  "description": "VixArena is a real-time 2D multiplayer arena deployed at `https://vix.micutu.com`. The backend is a C++20 Boost.Beast HTTP/WebSocket server with an authoritative in-memory game loop, bots, abilities, chat, objectives, and a browser canvas frontend.",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:load": "node scripts/ws_load_test.mjs",
+    "test": "npm run test:e2e && npm run test:load"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alexandru2984/vix.git"
+  },
+  "keywords": [
+    "vixarena",
+    "websocket",
+    "multiplayer",
+    "cpp"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Alexandru2984/vix/issues"
+  },
+  "homepage": "https://github.com/Alexandru2984/vix#readme",
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
+    "@playwright/test": "^1.60.0",
+    "ws": "^8.20.1"
+  }
+}

@@ -59,8 +59,8 @@
           <button class="ping-button" type="button" data-ping="Need help!">Help</button>
         </section>
 
-        <aside id="joinPanel" class="join-panel">
-          <h2>Join arena</h2>
+        <section id="joinPanel" class="join-panel" aria-labelledby="joinTitle">
+          <h2 id="joinTitle">Join arena</h2>
           <label for="nameInput">Display name</label>
           <div class="join-row">
             <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Guest">
@@ -80,7 +80,7 @@
             <span>Enter to chat</span>
             <span>Esc to unfocus chat</span>
           </div>
-        </aside>
+        </section>
 
         <section class="leaderboard-panel">
           <div class="panel-title">Leaderboard</div>
@@ -105,7 +105,7 @@
           </button>
         </nav>
 
-        <div id="touchStick" class="touch-stick" aria-label="Movement joystick">
+        <div id="touchStick" class="touch-stick" role="application" aria-label="Movement joystick">
           <div id="touchKnob" class="touch-knob"></div>
         </div>
       </section>

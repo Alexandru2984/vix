@@ -555,7 +555,7 @@
   }
 
   function isMobileLayout() {
-    return window.matchMedia("(max-width: 720px)").matches;
+    return window.matchMedia("(max-width: 720px), (max-width: 980px) and (max-height: 560px) and (orientation: landscape)").matches;
   }
 
   function updateChatBadge() {
@@ -705,7 +705,14 @@
 
   window.addEventListener("keydown", (event) => {
     if (event.target === chatInput || event.target === nameInput || event.target === roomInput) {
-      if (event.key === "Escape") event.target.blur();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.target.blur();
+        if (event.target === chatInput) {
+          document.body.classList.remove("show-chat", "chat-focused");
+          settleViewport();
+        }
+      }
       return;
     }
     if (event.key === "Enter") {
@@ -742,7 +749,10 @@
 
   chatInput.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      event.preventDefault();
+      document.body.classList.remove("show-chat", "chat-focused");
       chatInput.blur();
+      settleViewport();
     } else if (event.key === "Enter") {
       event.preventDefault();
       const message = chatInput.value.trim();
