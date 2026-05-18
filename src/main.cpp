@@ -374,14 +374,18 @@ namespace
   }
 
   template <class Body, class Allocator>
-  std::string forwardedClientAddress(const http::request<Body, http::basic_fields<Allocator>> &req)
+  std::string forwardedClientAddress(const http::request<Body, http::basic_fields<Allocator>> &req, bool trustForwardedHeaders)
   {
-    if (const auto it = req.find("CF-Connecting-IP"); it != req.end())
+    if (!trustForwardedHeaders)
+    {
+      return {};
+    }
+    if (const auto it = req.find("X-Real-IP"); it != req.end())
     {
       if (std::string value = firstForwardedAddress(std::string(it->value())); !value.empty())
         return value;
     }
-    if (const auto it = req.find("X-Real-IP"); it != req.end())
+    if (const auto it = req.find("CF-Connecting-IP"); it != req.end())
     {
       if (std::string value = firstForwardedAddress(std::string(it->value())); !value.empty())
         return value;
@@ -456,6 +460,7 @@ namespace
       if (!ec)
       {
         client_->remoteAddress = endpoint.address().to_string();
+        trustForwardedHeaders_ = endpoint.address().is_loopback();
       }
     }
 
@@ -467,7 +472,7 @@ namespace
     template <class Body, class Allocator>
     void run(http::request<Body, http::basic_fields<Allocator>> req)
     {
-      if (std::string forwarded = forwardedClientAddress(req); !forwarded.empty())
+      if (std::string forwarded = forwardedClientAddress(req, trustForwardedHeaders_); !forwarded.empty())
       {
         client_->remoteAddress = std::move(forwarded);
       }
@@ -595,6 +600,7 @@ namespace
     std::shared_ptr<arena::ClientConnection> client_;
     std::deque<std::string> outbox_;
     std::size_t outboxBytes_{0};
+    bool trustForwardedHeaders_{false};
   };
 
   class HttpSession : public std::enable_shared_from_this<HttpSession>
@@ -671,15 +677,13 @@ namespace
       if (rateLimitedTarget(target))
       {
         ++gHttpDynamicRequestsTotal;
-        std::string clientAddress = forwardedClientAddress(req_);
-        if (clientAddress.empty())
+        beast::error_code endpointEc;
+        const auto endpoint = socket_.remote_endpoint(endpointEc);
+        const bool trustForwardedHeaders = !endpointEc && endpoint.address().is_loopback();
+        std::string clientAddress = forwardedClientAddress(req_, trustForwardedHeaders);
+        if (clientAddress.empty() && !endpointEc)
         {
-          beast::error_code endpointEc;
-          const auto endpoint = socket_.remote_endpoint(endpointEc);
-          if (!endpointEc)
-          {
-            clientAddress = endpoint.address().to_string();
-          }
+          clientAddress = endpoint.address().to_string();
         }
         if (!gHttpRateLimiter.allow(clientAddress))
         {
