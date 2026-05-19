@@ -93,6 +93,22 @@ node scripts/benchmark_compare.mjs \
 
 The comparator writes `comparison.md` and `comparison.json` into the candidate directory. It compares best HTTP throughput, largest WebSocket run, WebSocket p95 latency, and matching test names across both reports.
 
+## Performance Gate
+
+After a benchmark has generated `report.json`, validate it against explicit thresholds:
+
+```bash
+BENCH_GATE_MIN_HTTP_RPS=8000 \
+BENCH_GATE_MIN_WS_CLIENTS=200 \
+BENCH_GATE_MAX_WS_P95_MS=300 \
+BENCH_GATE_MAX_UNEXPECTED_SERVER_ERRORS=0 \
+BENCH_GATE_MAX_PROTOCOL_VIOLATIONS_DELTA=0 \
+BENCH_GATE_MAX_SEND_FAILURES_DELTA=0 \
+node scripts/benchmark_gate.mjs benchmark-results/<result-dir>
+```
+
+The gate writes `gate.md` and `gate.json` into the benchmark result directory and exits non-zero if any threshold fails.
+
 The extreme script currently runs:
 
 - HTTP spike tests for `/`, `/api/state`, and `/api/stats`
