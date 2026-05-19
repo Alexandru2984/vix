@@ -20,6 +20,35 @@ WS_ROOMS_HIGH="${WS_ROOMS_HIGH:-4}"
 TARGET="${TARGET%/}"
 mkdir -p "${RESULT_DIR}"
 
+finalize() {
+  local status=$?
+  trap - EXIT
+
+  curl -fsS "${TARGET}/api/stats" >"${RESULT_DIR}/stats-after.json" || true
+
+  {
+    echo "target=${TARGET}"
+    echo "durationSeconds=${DURATION_SECONDS}"
+    echo "resultDir=${RESULT_DIR}"
+    echo "exitStatus=${status}"
+    echo
+    grep -R "Requests/sec\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|Latency\\|welcomed\\|snapshots\\|p95\\|load test ok\\|load test failed" "${RESULT_DIR}"/*.log 2>/dev/null || true
+  } | tee "${RESULT_DIR}/summary.txt"
+
+  if command -v node >/dev/null 2>&1; then
+    node "${ROOT_DIR}/scripts/benchmark_report.mjs" "${RESULT_DIR}" || true
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    echo "benchmark suite done: ${RESULT_DIR}"
+  else
+    echo "benchmark suite failed with status ${status}: ${RESULT_DIR}" >&2
+  fi
+  exit "${status}"
+}
+
+trap finalize EXIT
+
 target_host="$(
   TARGET_FOR_PARSE="${TARGET}" python3 - <<'PY' 2>/dev/null || true
 from urllib.parse import urlparse
@@ -74,19 +103,3 @@ if command -v node >/dev/null 2>&1 && node -e 'require("ws")' >/dev/null 2>&1; t
 else
   echo "skip websocket load: node or npm package ws not available" | tee "${RESULT_DIR}/ws-skipped.log"
 fi
-
-curl -fsS "${TARGET}/api/stats" >"${RESULT_DIR}/stats-after.json" || true
-
-{
-  echo "target=${TARGET}"
-  echo "durationSeconds=${DURATION_SECONDS}"
-  echo "resultDir=${RESULT_DIR}"
-  echo
-  grep -R "Requests/sec\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|Latency\\|welcomed\\|snapshots\\|p95\\|load test ok" "${RESULT_DIR}"/*.log 2>/dev/null || true
-} | tee "${RESULT_DIR}/summary.txt"
-
-if command -v node >/dev/null 2>&1; then
-  node "${ROOT_DIR}/scripts/benchmark_report.mjs" "${RESULT_DIR}" || true
-fi
-
-echo "benchmark suite done: ${RESULT_DIR}"

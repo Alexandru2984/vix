@@ -18,6 +18,21 @@ function findLine(text, pattern) {
   return text.split(/\r?\n/).find((line) => pattern.test(line)) || "";
 }
 
+async function readJsonIfExists(file) {
+  try {
+    return JSON.parse(await readFile(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function getPath(object, dottedPath) {
+  return dottedPath.split(".").reduce((current, part) => {
+    if (current && Object.prototype.hasOwnProperty.call(current, part)) return current[part];
+    return undefined;
+  }, object);
+}
+
 function parseWrk(name, text) {
   if (!text.includes("Running") || !text.includes("Requests/sec:")) return null;
   const running = findLine(text, /^Running /);
@@ -145,6 +160,8 @@ function buildMarkdown(report) {
   const largestWs = report.results
     .filter((item) => item.kind === "websocket" && typeof item.clients === "number")
     .sort((a, b) => b.clients - a.clients)[0] || null;
+  const statsRows = Object.entries(report.statsDelta || {})
+    .map(([key, value]) => [key, fmt(value)]);
 
   const lines = [
     "# VixArena Benchmark Report",
@@ -164,6 +181,10 @@ function buildMarkdown(report) {
     "## WebSocket",
     "",
     markdownTable(["Log", "Welcomed", "Rooms", "Snapshots", "p95", "Server errors", "Expected defensive", "Unexpected", "OK"], wsRows) || "_No WebSocket benchmark logs found._",
+    "",
+    "## Runtime Counter Delta",
+    "",
+    markdownTable(["Metric", "Delta"], statsRows) || "_No stats delta available._",
     "",
     "## Notes",
     "",
@@ -187,10 +208,36 @@ for (const log of logs) {
   results.push(parseLog(log.replace(/\.log$/, ""), text));
 }
 
+const statsBefore = await readJsonIfExists(path.join(resultDir, "stats-before.json"));
+const statsAfter = await readJsonIfExists(path.join(resultDir, "stats-after.json"));
+const statsDelta = {};
+for (const metric of [
+  "totalConnectionsSinceStart",
+  "totalChatMessagesSinceStart",
+  "websocket.messagesReceived",
+  "websocket.messagesSent",
+  "websocket.rejectedMessages",
+  "websocket.rateLimitRejects",
+  "websocket.rejectedConnections",
+  "websocket.protocolViolations",
+  "websocket.sendFailures",
+  "websocket.snapshotsSent",
+  "websocket.snapshotDeltasSent",
+  "websocket.snapshotBytesSent",
+  "websocket.snapshotDeltaBytesSent"
+]) {
+  const before = getPath(statsBefore, metric);
+  const after = getPath(statsAfter, metric);
+  if (typeof before === "number" && typeof after === "number") {
+    statsDelta[metric] = after - before;
+  }
+}
+
 const report = {
   generatedAt: new Date().toISOString(),
   resultDir,
-  results
+  results,
+  statsDelta
 };
 
 await writeFile(path.join(resultDir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);

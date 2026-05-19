@@ -51,7 +51,7 @@ WS_ROOMS_HIGH=4 \
 scripts/benchmark_suite.sh
 ```
 
-The suite writes raw logs plus `summary.txt`, `report.json`, and `report.md` into `benchmark-results/<timestamp>/`.
+The suite writes raw logs plus `stats-before.json`, `stats-after.json`, `summary.txt`, `report.json`, and `report.md` into `benchmark-results/<timestamp>/`. Reports are generated even when a benchmark phase fails, so partial results remain inspectable.
 
 Latest standard result:
 
@@ -79,7 +79,7 @@ WS_SHARDED_ROOMS=10 \
 scripts/benchmark_extreme.sh
 ```
 
-The extreme suite also writes raw logs plus `summary.txt`, `report.json`, and `report.md` into `benchmark-results/extreme-<timestamp>/`.
+The extreme suite also writes raw logs plus `stats-before.json`, `stats-after.json`, `summary.txt`, `report.json`, and `report.md` into `benchmark-results/extreme-<timestamp>/`. Reports include HTTP/WS summaries and runtime counter deltas from `/api/stats`.
 
 The extreme script currently runs:
 

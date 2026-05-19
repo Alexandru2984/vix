@@ -28,6 +28,35 @@ WS_CHURN_PERCENT="${WS_CHURN_PERCENT:-5}"
 TARGET="${TARGET%/}"
 mkdir -p "${RESULT_DIR}"
 
+finalize() {
+  local status=$?
+  trap - EXIT
+
+  curl -fsS "${TARGET}/api/stats" >"${RESULT_DIR}/stats-after.json" || true
+
+  {
+    echo "target=${TARGET}"
+    echo "durationSeconds=${DURATION_SECONDS}"
+    echo "resultDir=${RESULT_DIR}"
+    echo "exitStatus=${status}"
+    echo
+    grep -R "Requests/sec\\|Transfer/sec\\|Latency\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|welcomed\\|welcomedCount\\|connectAttempts\\|serverErrors\\|expectedDefensiveErrors\\|unexpectedServerErrors\\|snapshots\\|p95\\|load test ok\\|load test failed" "${RESULT_DIR}"/*.log 2>/dev/null || true
+  } | tee "${RESULT_DIR}/summary.txt"
+
+  if command -v node >/dev/null 2>&1; then
+    node "${ROOT_DIR}/scripts/benchmark_report.mjs" "${RESULT_DIR}" || true
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    echo "extreme benchmark done: ${RESULT_DIR}"
+  else
+    echo "extreme benchmark failed with status ${status}: ${RESULT_DIR}" >&2
+  fi
+  exit "${status}"
+}
+
+trap finalize EXIT
+
 target_host="$(
   TARGET_FOR_PARSE="${TARGET}" python3 - <<'PY' 2>/dev/null || true
 from urllib.parse import urlparse
@@ -146,19 +175,3 @@ if ! wait_all "${pids[@]}"; then
   echo "one or more mixed benchmark workers failed" >&2
   exit 1
 fi
-
-curl -fsS "${TARGET}/api/stats" >"${RESULT_DIR}/stats-after.json" || true
-
-{
-  echo "target=${TARGET}"
-  echo "durationSeconds=${DURATION_SECONDS}"
-  echo "resultDir=${RESULT_DIR}"
-  echo
-  grep -R "Requests/sec\\|Transfer/sec\\|Latency\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|welcomed\\|welcomedCount\\|connectAttempts\\|serverErrors\\|expectedDefensiveErrors\\|unexpectedServerErrors\\|snapshots\\|p95\\|load test ok" "${RESULT_DIR}"/*.log 2>/dev/null || true
-} | tee "${RESULT_DIR}/summary.txt"
-
-if command -v node >/dev/null 2>&1; then
-  node "${ROOT_DIR}/scripts/benchmark_report.mjs" "${RESULT_DIR}" || true
-fi
-
-echo "extreme benchmark done: ${RESULT_DIR}"
