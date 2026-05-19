@@ -81,6 +81,18 @@ scripts/benchmark_extreme.sh
 
 The extreme suite also writes raw logs plus `stats-before.json`, `stats-after.json`, `summary.txt`, `report.json`, and `report.md` into `benchmark-results/extreme-<timestamp>/`. Reports include HTTP/WS summaries and runtime counter deltas from `/api/stats`.
 
+## Comparing Runs
+
+After two benchmark runs have generated `report.json`, compare them with:
+
+```bash
+node scripts/benchmark_compare.mjs \
+  benchmark-results/<baseline-dir> \
+  benchmark-results/<candidate-dir>
+```
+
+The comparator writes `comparison.md` and `comparison.json` into the candidate directory. It compares best HTTP throughput, largest WebSocket run, WebSocket p95 latency, and matching test names across both reports.
+
 The extreme script currently runs:
 
 - HTTP spike tests for `/`, `/api/state`, and `/api/stats`
