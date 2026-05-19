@@ -100,7 +100,7 @@ The current unit tests cover text validation, world bounds/collision/spawn behav
 
 GitHub Actions workflows live in `.github/workflows/`.
 
-- `CI`: installs system dependencies and Node dependencies, builds Release with Ninja, runs CTest, starts temporary localhost servers, verifies HTTP endpoints, metrics, security headers, WebSocket Origin handling, browser E2E, responsive/mobile layout, accessibility, PWA metadata/service-worker behavior, and a short WebSocket load smoke test.
+- `CI`: installs system dependencies and Node dependencies, builds Release with Ninja, runs CTest, starts temporary localhost servers, verifies HTTP endpoints, metrics, security headers, WebSocket Origin handling, benchmark report/gate tooling, browser E2E, responsive/mobile layout, accessibility, PWA metadata/service-worker behavior, and a short WebSocket load smoke test.
 - `CodeQL`: builds the C++ application and runs GitHub CodeQL analysis on pushes, pull requests, weekly schedule, and manual dispatch.
 - `Deploy VPS`: manual production deploy. It runs CI in GitHub, SSHes into the VPS, pulls the selected branch with `git pull --ff-only`, optionally runs full CI again on the VPS, validates Nginx, restarts `vix-arena.service`, verifies local HTTP/API health, confirms localhost-only binding, and checks WSS through local Nginx.
 
