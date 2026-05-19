@@ -21,6 +21,7 @@ data/
 node_modules/
 playwright-report/
 test-results/
+benchmark-results/
 
 # Editor/OS files
 .DS_Store

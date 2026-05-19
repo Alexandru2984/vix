@@ -163,6 +163,21 @@ BENCHMARK_HTTP_RATE_LIMIT_BURST=5000
 BENCHMARK_HTTP_RATE_LIMIT_REFILL_PER_SECOND=1000
 ```
 
+For repeatable benchmarks:
+
+```bash
+# On the Vix VPS, enable/disable the temporary allowlist profile:
+scripts/benchmark_profile.sh enable 81.181.166.237
+scripts/benchmark_profile.sh status
+scripts/benchmark_profile.sh disable
+
+# From the benchmark VPS, run the whole flow in one command if it can SSH to the Vix VPS:
+SOURCE_IP=81.181.166.237 ORIGIN_SSH=micu@<origin-ip> TARGET=https://vix.micutu.com scripts/benchmark_one_step.sh
+
+# Or run just the local load suite from the benchmark VPS:
+TARGET=https://vix.micutu.com DURATION_SECONDS=60 scripts/benchmark_suite.sh
+```
+
 ## Features
 
 - Server-authoritative movement, bounds, obstacles, scoring, pickups, powerups, hazards, and abilities.
