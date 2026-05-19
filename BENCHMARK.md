@@ -99,7 +99,17 @@ Latest extreme partial result:
 | Rate-limit rejects | 3,448 |
 | Rejected messages | 1,254 |
 
-The extreme run stopped during the dense WebSocket phase because the load client currently treats all server `error` messages as failures. In this run, those errors were defensive rejections from rate limiting and gameplay cooldowns under intentionally aggressive input/chat/ability traffic. They were not protocol parser failures, connection rejections, send failures, or server crashes.
+The original extreme run stopped during the dense WebSocket phase because the load client treated all server `error` messages as failures. Those errors were defensive rejections from rate limiting and gameplay cooldowns under intentionally aggressive input/chat/ability traffic. They were not protocol parser failures, connection rejections, send failures, or server crashes.
+
+`scripts/ws_load_test.mjs` now supports `VIX_LOAD_EXPECT_DEFENSIVE_ERRORS=true`, which reports known defensive errors separately:
+
+- `message rate limit`
+- `chat rate limit`
+- `dash cooldown`
+- `shield cooldown`
+- `magnet cooldown`
+
+With that mode enabled, the extreme benchmark still fails on unexpected server errors, protocol/client errors, missing welcomes, or missing snapshots, but it can continue through defensive rate-limit/cooldown behavior.
 
 ## Interpretation
 
@@ -109,7 +119,7 @@ The strongest current claim is:
 Benchmarked at 16k+ HTTP RPS and 256 concurrent WebSocket clients in a dense single-room stress test, with 0 protocol violations, 0 rejected connections, and p95 WebSocket latency around 131 ms under defensive rate limiting.
 ```
 
-For a cleaner 500-client WebSocket claim, the next benchmark improvement should classify expected defensive errors separately from real failures, then allow the extreme script to continue through the sharded and mixed phases.
+For a cleaner 500-client WebSocket claim, rerun the current extreme script and report `expectedDefensiveErrors` separately from `unexpectedServerErrors`.
 
 ## What To Watch
 

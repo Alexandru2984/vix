@@ -11,8 +11,16 @@ const reconnectEveryMs = Number.parseInt(process.env.VIX_LOAD_RECONNECT_EVERY_MS
 const reconnectPercent = Number.parseFloat(process.env.VIX_LOAD_RECONNECT_PERCENT ?? "0");
 const connectTimeoutMs = Number.parseInt(process.env.VIX_LOAD_CONNECT_TIMEOUT_MS ?? "5000", 10);
 const allowServerErrors = /^(1|true|yes)$/i.test(process.env.VIX_LOAD_ALLOW_SERVER_ERRORS ?? "false");
+const expectDefensiveErrors = /^(1|true|yes)$/i.test(process.env.VIX_LOAD_EXPECT_DEFENSIVE_ERRORS ?? "false");
 const room = process.env.VIX_LOAD_ROOM ?? `load-${Date.now().toString(36)}`;
 const rooms = Math.max(1, Number.parseInt(process.env.VIX_LOAD_ROOMS ?? "1", 10));
+const defensiveErrorMessages = new Set([
+  "message rate limit",
+  "chat rate limit",
+  "dash cooldown",
+  "shield cooldown",
+  "magnet cooldown"
+]);
 
 const wsUrl = baseUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/$/, "") + "/ws";
 const origin = baseUrl.replace(/\/$/, "");
@@ -24,6 +32,11 @@ function wait(ms) {
 function roomFor(index) {
   if (rooms <= 1) return room;
   return `${room}-${(index % rooms) + 1}`;
+}
+
+function countMapAdd(map, key) {
+  const normalized = String(key || "unknown");
+  map.set(normalized, (map.get(normalized) || 0) + 1);
 }
 
 function sendJoin(ws, index) {
@@ -111,7 +124,16 @@ function openSocket(state, resolve, reject) {
       state.pongs += 1;
       if (typeof msg.t === "number") state.latencies.push(Math.max(0, Date.now() - msg.t));
     }
-    if (msg.type === "error") state.serverErrors += 1;
+    if (msg.type === "error") {
+      const errorMessage = String(msg.message || "unknown");
+      state.serverErrors += 1;
+      countMapAdd(state.serverErrorsByMessage, errorMessage);
+      if (defensiveErrorMessages.has(errorMessage)) {
+        state.expectedDefensiveErrors += 1;
+      } else {
+        state.unexpectedServerErrors += 1;
+      }
+    }
   });
 
   ws.on("close", () => {
@@ -140,6 +162,9 @@ function connectClient(index) {
       pongs: 0,
       errors: 0,
       serverErrors: 0,
+      expectedDefensiveErrors: 0,
+      unexpectedServerErrors: 0,
+      serverErrorsByMessage: new Map(),
       closes: 0,
       bytes: 0,
       latencies: [],
@@ -205,17 +230,23 @@ const totals = states.reduce((acc, state) => {
   acc.pongs += state.pongs;
   acc.errors += state.errors;
   acc.serverErrors += state.serverErrors;
+  acc.expectedDefensiveErrors += state.expectedDefensiveErrors;
+  acc.unexpectedServerErrors += state.unexpectedServerErrors;
+  for (const [message, count] of state.serverErrorsByMessage.entries()) {
+    acc.serverErrorsByMessage.set(message, (acc.serverErrorsByMessage.get(message) || 0) + count);
+  }
   acc.closes += state.closes;
   acc.bytes += state.bytes;
   acc.latencies.push(...state.latencies);
   return acc;
-}, { welcomed: 0, welcomedCount: 0, connectAttempts: 0, snapshots: 0, pongs: 0, errors: 0, serverErrors: 0, closes: 0, bytes: 0, latencies: [] });
+}, { welcomed: 0, welcomedCount: 0, connectAttempts: 0, snapshots: 0, pongs: 0, errors: 0, serverErrors: 0, expectedDefensiveErrors: 0, unexpectedServerErrors: 0, serverErrorsByMessage: new Map(), closes: 0, bytes: 0, latencies: [] });
 
 const failures = [];
 if (totals.welcomed !== clients) failures.push(`welcomed ${totals.welcomed}/${clients}`);
 if (totals.snapshots < clients) failures.push(`snapshots ${totals.snapshots}/${clients}`);
 if (totals.errors > 0) failures.push(`protocol/client errors ${totals.errors}`);
-if (!allowServerErrors && totals.serverErrors > 0) failures.push(`server errors ${totals.serverErrors}`);
+if (!allowServerErrors && !expectDefensiveErrors && totals.serverErrors > 0) failures.push(`server errors ${totals.serverErrors}`);
+if (!allowServerErrors && expectDefensiveErrors && totals.unexpectedServerErrors > 0) failures.push(`unexpected server errors ${totals.unexpectedServerErrors}`);
 
 try {
   const stats = await fetch(`${baseUrl.replace(/\/$/, "")}/api/stats`).then((res) => res.json());
@@ -237,6 +268,7 @@ const summary = {
   rampMs,
   reconnectEveryMs,
   reconnectPercent,
+  expectDefensiveErrors,
   welcomed: totals.welcomed,
   welcomedCount: totals.welcomedCount,
   connectAttempts: totals.connectAttempts,
@@ -244,6 +276,9 @@ const summary = {
   pongs: totals.pongs,
   closes: totals.closes,
   serverErrors: totals.serverErrors,
+  expectedDefensiveErrors: totals.expectedDefensiveErrors,
+  unexpectedServerErrors: totals.unexpectedServerErrors,
+  serverErrorsByMessage: Object.fromEntries([...totals.serverErrorsByMessage.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))),
   bytes: totals.bytes,
   latencyMs: {
     p50: percentile(totals.latencies, 50),

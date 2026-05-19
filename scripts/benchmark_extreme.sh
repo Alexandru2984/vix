@@ -105,6 +105,7 @@ run_log "ws-dense-c${WS_DENSE_CLIENTS}-r${WS_DENSE_ROOMS}" \
     VIX_LOAD_CHAT_EVERY_MS="${WS_CHAT_EVERY_MS}" \
     VIX_LOAD_ABILITY_EVERY_MS="${WS_ABILITY_EVERY_MS}" \
     VIX_LOAD_RAMP_MS="${WS_RAMP_MS}" \
+    VIX_LOAD_EXPECT_DEFENSIVE_ERRORS=true \
     node "${ROOT_DIR}/scripts/ws_load_test.mjs"
 
 echo "phase 3/4: sharded WebSocket with churn"
@@ -119,6 +120,7 @@ run_log "ws-sharded-churn-c${WS_SHARDED_CLIENTS}-r${WS_SHARDED_ROOMS}" \
     VIX_LOAD_RAMP_MS="${WS_RAMP_MS}" \
     VIX_LOAD_RECONNECT_EVERY_MS="${WS_CHURN_EVERY_MS}" \
     VIX_LOAD_RECONNECT_PERCENT="${WS_CHURN_PERCENT}" \
+    VIX_LOAD_EXPECT_DEFENSIVE_ERRORS=true \
     node "${ROOT_DIR}/scripts/ws_load_test.mjs"
 
 echo "phase 4/4: mixed HTTP and WebSocket contention"
@@ -137,6 +139,7 @@ pids+=("$(run_bg_log "mixed-ws-c${WS_MIXED_CLIENTS}-r${WS_MIXED_ROOMS}" \
     VIX_LOAD_CHAT_EVERY_MS="${WS_CHAT_EVERY_MS}" \
     VIX_LOAD_ABILITY_EVERY_MS="${WS_ABILITY_EVERY_MS}" \
     VIX_LOAD_RAMP_MS="${WS_RAMP_MS}" \
+    VIX_LOAD_EXPECT_DEFENSIVE_ERRORS=true \
     node "${ROOT_DIR}/scripts/ws_load_test.mjs")")
 
 if ! wait_all "${pids[@]}"; then
@@ -151,7 +154,7 @@ curl -fsS "${TARGET}/api/stats" >"${RESULT_DIR}/stats-after.json" || true
   echo "durationSeconds=${DURATION_SECONDS}"
   echo "resultDir=${RESULT_DIR}"
   echo
-  grep -R "Requests/sec\\|Transfer/sec\\|Latency\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|welcomed\\|welcomedCount\\|connectAttempts\\|serverErrors\\|snapshots\\|p95\\|load test ok" "${RESULT_DIR}"/*.log 2>/dev/null || true
+  grep -R "Requests/sec\\|Transfer/sec\\|Latency\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|welcomed\\|welcomedCount\\|connectAttempts\\|serverErrors\\|expectedDefensiveErrors\\|unexpectedServerErrors\\|snapshots\\|p95\\|load test ok" "${RESULT_DIR}"/*.log 2>/dev/null || true
 } | tee "${RESULT_DIR}/summary.txt"
 
 echo "extreme benchmark done: ${RESULT_DIR}"
