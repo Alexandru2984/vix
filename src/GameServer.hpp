@@ -26,11 +26,13 @@ namespace arena
   public:
     struct Limits
     {
+      std::size_t maxPlayersPerRoom{64};
       std::size_t maxConnectionsPerIp{16};
       double wsMessageBurst{36.0};
       double wsMessageRefillPerSecond{14.0};
       std::uint32_t maxInvalidMessagesPerConnection{5};
       std::vector<std::string> benchmarkSourceIps;
+      std::size_t benchmarkMaxPlayersPerRoom{256};
       std::size_t benchmarkMaxConnectionsPerIp{128};
       double benchmarkWsMessageBurst{120.0};
       double benchmarkWsMessageRefillPerSecond{60.0};
@@ -208,6 +210,7 @@ namespace arena
     void sendPrepared(const std::vector<PreparedPayload> &payloads, bool snapshotLike);
     void recordTickDurationLocked(std::uint64_t durationUs);
     [[nodiscard]] bool benchmarkSourceLocked(const std::string &ip) const;
+    [[nodiscard]] std::size_t maxPlayersForIpLocked(const std::string &ip) const;
     [[nodiscard]] std::size_t maxConnectionsForIpLocked(const std::string &ip) const;
     [[nodiscard]] double wsMessageBurstForIpLocked(const std::string &ip) const;
     [[nodiscard]] double wsMessageRefillForIpLocked(const std::string &ip) const;
@@ -254,7 +257,6 @@ namespace arena
     Limits limits_;
 
     static constexpr int tickRateTarget_{20};
-    static constexpr std::size_t maxPlayers_{64};
     static constexpr std::size_t targetPlayersWithBots_{4};
     static constexpr std::size_t maxBots_{3};
     static constexpr int orbQuestGoal_{3};

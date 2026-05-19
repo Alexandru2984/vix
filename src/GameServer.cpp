@@ -400,6 +400,11 @@ namespace arena
     return benchmarkSourceLocked(ip) ? limits_.benchmarkMaxConnectionsPerIp : limits_.maxConnectionsPerIp;
   }
 
+  std::size_t GameServer::maxPlayersForIpLocked(const std::string &ip) const
+  {
+    return benchmarkSourceLocked(ip) ? limits_.benchmarkMaxPlayersPerRoom : limits_.maxPlayersPerRoom;
+  }
+
   double GameServer::wsMessageBurstForIpLocked(const std::string &ip) const
   {
     return benchmarkSourceLocked(ip) ? limits_.benchmarkWsMessageBurst : limits_.wsMessageBurst;
@@ -478,7 +483,7 @@ namespace arena
                                                 jsonArrayContainsString(message["supports"], protocolFeatureSnapshotDelta);
         }
 
-        if (humanCountLocked(roomCode) >= maxPlayers_)
+        if (humanCountLocked(roomCode) >= maxPlayersForIpLocked(session ? session->remoteAddress : ""))
         {
           welcome = errorMessage("arena full");
           history.clear();
@@ -1012,7 +1017,7 @@ namespace arena
     for (const auto &[roomCode, humans] : humanRooms)
     {
       const std::size_t desiredBots = std::min(maxBots_, targetPlayersWithBots_ > humans ? targetPlayersWithBots_ - humans : 0);
-      while (botCountLocked(roomCode) < desiredBots && players_.size() < maxPlayers_)
+      while (botCountLocked(roomCode) < desiredBots && humanCountLocked(roomCode) + botCountLocked(roomCode) < limits_.maxPlayersPerRoom)
       {
         Player bot = spawnBotLocked(now, roomCode);
         const std::string id = bot.id;
@@ -2438,7 +2443,7 @@ namespace arena
         {"globalConnectedPlayers", players_.size()},
         {"globalHumanPlayers", humanCountLocked()},
         {"globalBotPlayers", botCountLocked()},
-        {"maxPlayers", maxPlayers_},
+        {"maxPlayers", limits_.maxPlayersPerRoom},
         {"uptimeSeconds", uptimeSeconds(startedAt_)},
         {"tickRateTarget", tickRateTarget_},
         {"protocolVersion", protocolVersion},
@@ -2474,6 +2479,8 @@ namespace arena
         {"websocket", {
                           {"activeConnections", sessionAbuse_.size()},
                           {"activeRemoteAddresses", connectionsByIp_.size()},
+                          {"maxPlayersPerRoom", limits_.maxPlayersPerRoom},
+                          {"benchmarkMaxPlayersPerRoom", limits_.benchmarkMaxPlayersPerRoom},
                           {"maxConnectionsPerIp", limits_.maxConnectionsPerIp},
                           {"messageBurst", limits_.wsMessageBurst},
                           {"messageRefillPerSecond", limits_.wsMessageRefillPerSecond},

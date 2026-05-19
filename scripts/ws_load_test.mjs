@@ -5,12 +5,18 @@ const clients = Number.parseInt(process.env.VIX_LOAD_CLIENTS ?? "16", 10);
 const durationMs = Number.parseInt(process.env.VIX_LOAD_DURATION_MS ?? "5000", 10);
 const inputEveryMs = Number.parseInt(process.env.VIX_LOAD_INPUT_EVERY_MS ?? "100", 10);
 const room = process.env.VIX_LOAD_ROOM ?? `load-${Date.now().toString(36)}`;
+const rooms = Math.max(1, Number.parseInt(process.env.VIX_LOAD_ROOMS ?? "1", 10));
 
 const wsUrl = baseUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/$/, "") + "/ws";
 const origin = baseUrl.replace(/\/$/, "");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function roomFor(index) {
+  if (rooms <= 1) return room;
+  return `${room}-${(index % rooms) + 1}`;
 }
 
 function connectClient(index) {
@@ -43,7 +49,7 @@ function connectClient(index) {
       ws.send(JSON.stringify({
         type: "join",
         name: `Load${index}`,
-        room
+        room: roomFor(index)
       }));
 
       let seq = 0;
@@ -138,6 +144,7 @@ try {
 const summary = {
   clients,
   room,
+  rooms,
   durationMs,
   welcomed: totals.welcomed,
   snapshots: totals.snapshots,

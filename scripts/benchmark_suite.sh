@@ -14,6 +14,8 @@ WRK_HIGH_THREADS="${WRK_HIGH_THREADS:-8}"
 WRK_HIGH_CONNECTIONS="${WRK_HIGH_CONNECTIONS:-200}"
 WS_CLIENTS_LOW="${WS_CLIENTS_LOW:-50}"
 WS_CLIENTS_HIGH="${WS_CLIENTS_HIGH:-100}"
+WS_ROOMS_LOW="${WS_ROOMS_LOW:-1}"
+WS_ROOMS_HIGH="${WS_ROOMS_HIGH:-4}"
 
 TARGET="${TARGET%/}"
 mkdir -p "${RESULT_DIR}"
@@ -67,8 +69,8 @@ else
 fi
 
 if command -v node >/dev/null 2>&1 && node -e 'require("ws")' >/dev/null 2>&1; then
-  run_log "ws-c${WS_CLIENTS_LOW}" env BASE_URL="${TARGET}" VIX_LOAD_CLIENTS="${WS_CLIENTS_LOW}" VIX_LOAD_DURATION_MS="$((DURATION_SECONDS * 1000))" node "${ROOT_DIR}/scripts/ws_load_test.mjs"
-  run_log "ws-c${WS_CLIENTS_HIGH}" env BASE_URL="${TARGET}" VIX_LOAD_CLIENTS="${WS_CLIENTS_HIGH}" VIX_LOAD_DURATION_MS="$((DURATION_SECONDS * 1000))" node "${ROOT_DIR}/scripts/ws_load_test.mjs"
+  run_log "ws-c${WS_CLIENTS_LOW}-r${WS_ROOMS_LOW}" env BASE_URL="${TARGET}" VIX_LOAD_CLIENTS="${WS_CLIENTS_LOW}" VIX_LOAD_ROOMS="${WS_ROOMS_LOW}" VIX_LOAD_DURATION_MS="$((DURATION_SECONDS * 1000))" node "${ROOT_DIR}/scripts/ws_load_test.mjs"
+  run_log "ws-c${WS_CLIENTS_HIGH}-r${WS_ROOMS_HIGH}" env BASE_URL="${TARGET}" VIX_LOAD_CLIENTS="${WS_CLIENTS_HIGH}" VIX_LOAD_ROOMS="${WS_ROOMS_HIGH}" VIX_LOAD_DURATION_MS="$((DURATION_SECONDS * 1000))" node "${ROOT_DIR}/scripts/ws_load_test.mjs"
 else
   echo "skip websocket load: node or npm package ws not available" | tee "${RESULT_DIR}/ws-skipped.log"
 fi

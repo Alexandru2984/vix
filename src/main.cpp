@@ -932,11 +932,13 @@ int main()
   const std::string databaseUrl = envString(fileEnv, "DATABASE_URL", "");
   const std::filesystem::path dataDir = envString(fileEnv, "DATA_DIR", (root / "data").string());
   arena::GameServer::Limits gameLimits;
+  gameLimits.maxPlayersPerRoom = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_PLAYERS_PER_ROOM", static_cast<int>(gameLimits.maxPlayersPerRoom))));
   gameLimits.maxConnectionsPerIp = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_CONNECTIONS_PER_IP", static_cast<int>(gameLimits.maxConnectionsPerIp))));
   gameLimits.wsMessageBurst = std::max(1.0, envDouble(fileEnv, "WS_MESSAGE_BURST", gameLimits.wsMessageBurst));
   gameLimits.wsMessageRefillPerSecond = std::max(0.1, envDouble(fileEnv, "WS_MESSAGE_REFILL_PER_SECOND", gameLimits.wsMessageRefillPerSecond));
   gameLimits.maxInvalidMessagesPerConnection = static_cast<std::uint32_t>(std::max(1, envInt(fileEnv, "MAX_INVALID_MESSAGES_PER_CONNECTION", static_cast<int>(gameLimits.maxInvalidMessagesPerConnection))));
   gameLimits.benchmarkSourceIps = parseCsvList(envString(fileEnv, "BENCHMARK_SOURCE_IPS", ""));
+  gameLimits.benchmarkMaxPlayersPerRoom = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "BENCHMARK_MAX_PLAYERS_PER_ROOM", static_cast<int>(gameLimits.benchmarkMaxPlayersPerRoom))));
   gameLimits.benchmarkMaxConnectionsPerIp = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "BENCHMARK_MAX_CONNECTIONS_PER_IP", static_cast<int>(gameLimits.benchmarkMaxConnectionsPerIp))));
   gameLimits.benchmarkWsMessageBurst = std::max(gameLimits.wsMessageBurst, envDouble(fileEnv, "BENCHMARK_WS_MESSAGE_BURST", gameLimits.benchmarkWsMessageBurst));
   gameLimits.benchmarkWsMessageRefillPerSecond = std::max(gameLimits.wsMessageRefillPerSecond, envDouble(fileEnv, "BENCHMARK_WS_MESSAGE_REFILL_PER_SECOND", gameLimits.benchmarkWsMessageRefillPerSecond));
@@ -982,10 +984,12 @@ int main()
                                          {"postgresConfigured", !databaseUrl.empty()},
                                          {"allowedOrigins", config.allowedOrigins},
                                          {"allowMissingOrigin", config.allowMissingOrigin},
+                                         {"maxPlayersPerRoom", gameLimits.maxPlayersPerRoom},
                                          {"maxConnectionsPerIp", gameLimits.maxConnectionsPerIp},
                                          {"wsMessageBurst", gameLimits.wsMessageBurst},
                                          {"wsMessageRefillPerSecond", gameLimits.wsMessageRefillPerSecond},
                                          {"benchmarkSourceIps", gameLimits.benchmarkSourceIps.size()},
+                                         {"benchmarkMaxPlayersPerRoom", gameLimits.benchmarkMaxPlayersPerRoom},
                                          {"benchmarkMaxConnectionsPerIp", gameLimits.benchmarkMaxConnectionsPerIp},
                                          {"benchmarkWsMessageBurst", gameLimits.benchmarkWsMessageBurst},
                                          {"benchmarkWsMessageRefillPerSecond", gameLimits.benchmarkWsMessageRefillPerSecond},

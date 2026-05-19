@@ -14,6 +14,7 @@ Usage:
 
 Environment overrides for enable:
   BENCHMARK_MAX_CONNECTIONS_PER_IP              default: 256
+  BENCHMARK_MAX_PLAYERS_PER_ROOM                default: 256
   BENCHMARK_WS_MESSAGE_BURST                    default: 240
   BENCHMARK_WS_MESSAGE_REFILL_PER_SECOND        default: 120
   BENCHMARK_HTTP_RATE_LIMIT_BURST               default: 20000
@@ -106,6 +107,7 @@ case "${command}" in
     fi
     cp -p "${ENV_FILE}" "${ENV_FILE}.benchmark-backup-$(date -u +%Y%m%d%H%M%S)"
     set_env "BENCHMARK_SOURCE_IPS" "${source_ip}"
+    set_env "BENCHMARK_MAX_PLAYERS_PER_ROOM" "${BENCHMARK_MAX_PLAYERS_PER_ROOM:-256}"
     set_env "BENCHMARK_MAX_CONNECTIONS_PER_IP" "${BENCHMARK_MAX_CONNECTIONS_PER_IP:-256}"
     set_env "BENCHMARK_WS_MESSAGE_BURST" "${BENCHMARK_WS_MESSAGE_BURST:-240}"
     set_env "BENCHMARK_WS_MESSAGE_REFILL_PER_SECOND" "${BENCHMARK_WS_MESSAGE_REFILL_PER_SECOND:-120}"
@@ -116,6 +118,7 @@ case "${command}" in
   disable)
     cp -p "${ENV_FILE}" "${ENV_FILE}.benchmark-backup-$(date -u +%Y%m%d%H%M%S)"
     set_env "BENCHMARK_SOURCE_IPS" ""
+    set_env "BENCHMARK_MAX_PLAYERS_PER_ROOM" "256"
     set_env "BENCHMARK_MAX_CONNECTIONS_PER_IP" "128"
     set_env "BENCHMARK_WS_MESSAGE_BURST" "120"
     set_env "BENCHMARK_WS_MESSAGE_REFILL_PER_SECOND" "60"

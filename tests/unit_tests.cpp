@@ -289,11 +289,13 @@ namespace
   void gameServerAppliesConfigurableLimits()
   {
     arena::GameServer::Limits limits;
+    limits.maxPlayersPerRoom = 2;
     limits.maxConnectionsPerIp = 2;
     limits.wsMessageBurst = 3.0;
     limits.wsMessageRefillPerSecond = 0.1;
     limits.maxInvalidMessagesPerConnection = 2;
     limits.benchmarkSourceIps = {"203.0.113.45"};
+    limits.benchmarkMaxPlayersPerRoom = 4;
     limits.benchmarkMaxConnectionsPerIp = 4;
     limits.benchmarkWsMessageBurst = 10.0;
     limits.benchmarkWsMessageRefillPerSecond = 5.0;
@@ -338,6 +340,9 @@ namespace
       server.onMessage(burst.connection.get(), R"({"type":"ping","t":1})");
     }
     const auto stats = server.statsJson();
+    requireEq(stats.value("maxPlayers", 0), 2, "stats should expose custom room player cap");
+    requireEq(stats.at("websocket").value("maxPlayersPerRoom", 0), 2, "websocket stats should expose custom room player cap");
+    requireEq(stats.at("websocket").value("benchmarkMaxPlayersPerRoom", 0), 4, "websocket stats should expose benchmark room player cap");
     requireEq(stats.at("websocket").value("maxConnectionsPerIp", 0), 2, "stats should expose custom connection cap");
     requireEq(stats.at("websocket").value("benchmarkSourceIps", 0), 1, "stats should expose benchmark source count");
     requireEq(stats.at("websocket").value("benchmarkMaxConnectionsPerIp", 0), 4, "stats should expose benchmark connection cap");
