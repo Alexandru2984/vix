@@ -179,7 +179,27 @@ SOURCE_IP=81.181.166.237 ORIGIN_SSH=micu@<origin-ip> TARGET=https://vix.micutu.c
 
 # Or run just the local load suite from the benchmark VPS:
 TARGET=https://vix.micutu.com DURATION_SECONDS=60 WS_CLIENTS_HIGH=200 WS_ROOMS_HIGH=4 scripts/benchmark_suite.sh
+
+# Heavier stress profile. Run this enable command on the Vix VPS first:
+BENCHMARK_MAX_CONNECTIONS_PER_IP=1024 \
+BENCHMARK_MAX_PLAYERS_PER_ROOM=512 \
+BENCHMARK_WS_MESSAGE_BURST=1200 \
+BENCHMARK_WS_MESSAGE_REFILL_PER_SECOND=600 \
+BENCHMARK_HTTP_RATE_LIMIT_BURST=50000 \
+BENCHMARK_HTTP_RATE_LIMIT_REFILL_PER_SECOND=30000 \
+scripts/benchmark_profile.sh enable 81.181.166.237
+
+# Then run this from the benchmark VPS:
+TARGET=https://vix.micutu.com \
+ORIGIN_IP=<origin-ip> \
+DURATION_SECONDS=90 \
+WRK_SPIKE_CONNECTIONS=600 \
+WS_SHARDED_CLIENTS=500 \
+WS_SHARDED_ROOMS=10 \
+scripts/benchmark_extreme.sh
 ```
+
+See [BENCHMARK.md](BENCHMARK.md) for measured HTTP/WebSocket results, interpretation notes, and the current CV-ready benchmark wording.
 
 ## Features
 
