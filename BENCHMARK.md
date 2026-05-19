@@ -136,6 +136,23 @@ BENCH_GATE_MAX_WS_P95_MS=350 \
 scripts/benchmark_one_step.sh
 ```
 
+To collect origin CPU/memory/service telemetry during the run, add `RUN_ORIGIN_MONITOR=true`:
+
+```bash
+SOURCE_IP=81.181.166.237 \
+ORIGIN_SSH=micu@57.129.112.224 \
+TARGET=https://vix.micutu.com \
+BENCHMARK_SUITE=extreme \
+RUN_ORIGIN_MONITOR=true \
+RUN_BENCHMARK_GATE=true \
+BENCH_GATE_MIN_HTTP_RPS=12000 \
+BENCH_GATE_MIN_WS_CLIENTS=500 \
+BENCH_GATE_MAX_WS_P95_MS=350 \
+scripts/benchmark_one_step.sh
+```
+
+This copies `origin-monitor.jsonl`, `origin-monitor-report.md`, and `origin-monitor-report.json` into the benchmark result directory.
+
 The extreme script currently runs:
 
 - HTTP spike tests for `/`, `/api/state`, and `/api/stats`
