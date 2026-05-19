@@ -177,6 +177,16 @@ scripts/benchmark_profile.sh disable
 # From the benchmark VPS, run the whole flow in one command if it can SSH to the Vix VPS:
 SOURCE_IP=81.181.166.237 ORIGIN_SSH=micu@<origin-ip> TARGET=https://vix.micutu.com scripts/benchmark_one_step.sh
 
+# The same flow with a local performance gate:
+SOURCE_IP=81.181.166.237 \
+ORIGIN_SSH=micu@<origin-ip> \
+TARGET=https://vix.micutu.com \
+RUN_BENCHMARK_GATE=true \
+BENCH_GATE_MIN_HTTP_RPS=8000 \
+BENCH_GATE_MIN_WS_CLIENTS=200 \
+BENCH_GATE_MAX_WS_P95_MS=300 \
+scripts/benchmark_one_step.sh
+
 # Or run just the local load suite from the benchmark VPS:
 TARGET=https://vix.micutu.com DURATION_SECONDS=60 WS_CLIENTS_HIGH=200 WS_ROOMS_HIGH=4 scripts/benchmark_suite.sh
 

@@ -6,6 +6,8 @@ SOURCE_IP="${SOURCE_IP:-}"
 ORIGIN_SSH="${ORIGIN_SSH:-}"
 TARGET="${TARGET:-https://vix.micutu.com}"
 KEEP_BENCHMARK_PROFILE="${KEEP_BENCHMARK_PROFILE:-false}"
+RUN_BENCHMARK_GATE="${RUN_BENCHMARK_GATE:-false}"
+RESULT_DIR="${RESULT_DIR:-${ROOT_DIR}/benchmark-results/one-step-$(date -u +%Y%m%dT%H%M%SZ)}"
 
 if [[ -z "${SOURCE_IP}" ]]; then
   SOURCE_IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
@@ -19,6 +21,9 @@ Usage from the benchmark VPS:
 Optional:
   KEEP_BENCHMARK_PROFILE=true   Keep benchmark profile enabled after tests.
   DURATION_SECONDS=30           Shorter benchmark duration.
+  RESULT_DIR=benchmark-results/run-name
+  RUN_BENCHMARK_GATE=true       Run scripts/benchmark_gate.mjs after the suite.
+  BENCH_GATE_*                  Thresholds consumed by benchmark_gate.mjs.
 EOF
   exit 2
 fi
@@ -37,4 +42,9 @@ echo "enabling benchmark profile for ${SOURCE_IP} on ${ORIGIN_SSH}"
 ssh "${ORIGIN_SSH}" "cd /home/micu/vix && scripts/benchmark_profile.sh enable '${SOURCE_IP}'"
 
 echo "running benchmark suite against ${TARGET}"
-TARGET="${TARGET}" "${ROOT_DIR}/scripts/benchmark_suite.sh"
+TARGET="${TARGET}" RESULT_DIR="${RESULT_DIR}" "${ROOT_DIR}/scripts/benchmark_suite.sh"
+
+if [[ "${RUN_BENCHMARK_GATE}" == "true" ]]; then
+  echo "running benchmark gate for ${RESULT_DIR}"
+  node "${ROOT_DIR}/scripts/benchmark_gate.mjs" "${RESULT_DIR}"
+fi

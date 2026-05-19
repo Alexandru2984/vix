@@ -109,6 +109,19 @@ node scripts/benchmark_gate.mjs benchmark-results/<result-dir>
 
 The gate writes `gate.md` and `gate.json` into the benchmark result directory and exits non-zero if any threshold fails.
 
+The one-step benchmark helper can run the gate automatically:
+
+```bash
+SOURCE_IP=81.181.166.237 \
+ORIGIN_SSH=micu@57.129.112.224 \
+TARGET=https://vix.micutu.com \
+RUN_BENCHMARK_GATE=true \
+BENCH_GATE_MIN_HTTP_RPS=8000 \
+BENCH_GATE_MIN_WS_CLIENTS=200 \
+BENCH_GATE_MAX_WS_P95_MS=300 \
+scripts/benchmark_one_step.sh
+```
+
 The extreme script currently runs:
 
 - HTTP spike tests for `/`, `/api/state`, and `/api/stats`
