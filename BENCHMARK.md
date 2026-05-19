@@ -104,10 +104,13 @@ BENCH_GATE_MAX_WS_P95_MS=300 \
 BENCH_GATE_MAX_UNEXPECTED_SERVER_ERRORS=0 \
 BENCH_GATE_MAX_PROTOCOL_VIOLATIONS_DELTA=0 \
 BENCH_GATE_MAX_SEND_FAILURES_DELTA=0 \
+BENCH_GATE_ORIGIN_MAX_CPU_PERCENT=90 \
+BENCH_GATE_ORIGIN_MAX_RSS_KB=262144 \
+BENCH_GATE_ORIGIN_MAX_TICK_P95_US=5000 \
 node scripts/benchmark_gate.mjs benchmark-results/<result-dir>
 ```
 
-The gate writes `gate.md` and `gate.json` into the benchmark result directory and exits non-zero if any threshold fails.
+The gate writes `gate.md` and `gate.json` into the benchmark result directory and exits non-zero if any threshold fails. Origin thresholds are only enforced when `origin-monitor-report.json` exists, unless `BENCH_GATE_REQUIRE_ORIGIN_MONITOR=1` is set.
 
 The one-step benchmark helper can run the gate automatically:
 
@@ -133,6 +136,10 @@ RUN_BENCHMARK_GATE=true \
 BENCH_GATE_MIN_HTTP_RPS=12000 \
 BENCH_GATE_MIN_WS_CLIENTS=500 \
 BENCH_GATE_MAX_WS_P95_MS=350 \
+BENCH_GATE_REQUIRE_ORIGIN_MONITOR=1 \
+BENCH_GATE_ORIGIN_MAX_CPU_PERCENT=90 \
+BENCH_GATE_ORIGIN_MAX_RSS_KB=262144 \
+BENCH_GATE_ORIGIN_MAX_TICK_P95_US=5000 \
 scripts/benchmark_one_step.sh
 ```
 
@@ -196,6 +203,46 @@ Benchmarked at 16k+ HTTP RPS and 256 concurrent WebSocket clients in a dense sin
 ```
 
 For a cleaner 500-client WebSocket claim, rerun the current extreme script and report `expectedDefensiveErrors` separately from `unexpectedServerErrors`.
+
+## CV-Grade Benchmark Gate
+
+For a result worth publishing in a portfolio or CV, prefer a run that includes:
+
+- direct-origin HTTP and WebSocket tests
+- `RUN_ORIGIN_MONITOR=true`
+- `RUN_BENCHMARK_GATE=true`
+- `welcomed == clients` for every WebSocket phase
+- `unexpectedServerErrors == 0`
+- `protocolViolations == 0`
+- `rejectedConnections == 0`
+- `sendFailures == 0`
+- origin CPU, RSS, and tick p95 under explicit thresholds
+
+Suggested gate for a strong public claim:
+
+```bash
+SOURCE_IP=81.181.166.237 \
+ORIGIN_SSH=micu@57.129.112.224 \
+TARGET=https://vix.micutu.com \
+BENCHMARK_SUITE=extreme \
+RUN_ORIGIN_MONITOR=true \
+RUN_BENCHMARK_GATE=true \
+BENCH_GATE_REQUIRE_ORIGIN_MONITOR=1 \
+BENCH_GATE_MIN_HTTP_RPS=12000 \
+BENCH_GATE_MIN_WS_CLIENTS=500 \
+BENCH_GATE_MAX_WS_P95_MS=350 \
+BENCH_GATE_MAX_UNEXPECTED_SERVER_ERRORS=0 \
+BENCH_GATE_MAX_PROTOCOL_VIOLATIONS_DELTA=0 \
+BENCH_GATE_MAX_REJECTED_CONNECTIONS_DELTA=0 \
+BENCH_GATE_MAX_SEND_FAILURES_DELTA=0 \
+BENCH_GATE_ORIGIN_MIN_SAMPLES=10 \
+BENCH_GATE_ORIGIN_MAX_CPU_PERCENT=90 \
+BENCH_GATE_ORIGIN_MAX_RSS_KB=262144 \
+BENCH_GATE_ORIGIN_MAX_TICK_P95_US=5000 \
+scripts/benchmark_one_step.sh
+```
+
+If this passes, keep the generated `report.md`, `gate.md`, `comparison.md` if available, and `origin-monitor-report.md` as the evidence bundle for the claim.
 
 ## What To Watch
 
