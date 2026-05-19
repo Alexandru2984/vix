@@ -817,7 +817,13 @@
     roundTimeEl.textContent = formatTime(state.round.secondsRemaining);
     if (state.round.phase === "intermission") {
       const winner = state.round.lastWinner || {};
-      roundBanner.innerHTML = `Round ${state.round.number} complete: <b>${escapeHtml(winner.name || "No winner")}</b> won with <b>${winner.score || 0}</b>. Next round in ${formatTime(state.round.secondsRemaining)}.`;
+      roundBanner.replaceChildren(
+        document.createTextNode(`Round ${state.round.number} complete: `),
+        strongText(winner.name || "No winner"),
+        document.createTextNode(" won with "),
+        strongText(winner.score || 0),
+        document.createTextNode(`. Next round in ${formatTime(state.round.secondsRemaining)}.`)
+      );
       roundBanner.classList.remove("hidden");
     } else {
       roundBanner.classList.add("hidden");
@@ -839,6 +845,12 @@
     if (changed) renderEvents();
   }
 
+  function strongText(value) {
+    const el = document.createElement("b");
+    el.textContent = String(value);
+    return el;
+  }
+
   function renderEvents() {
     eventFeed.replaceChildren();
     for (const event of state.events.slice(0, 6)) {
@@ -851,16 +863,6 @@
       line.append(label, text);
       eventFeed.append(line);
     }
-  }
-
-  function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      "\"": "&quot;",
-      "'": "&#39;"
-    })[c]);
   }
 
   function isMobileLayout() {

@@ -51,8 +51,10 @@ require_text 'ProtectSystem=strict' systemd/vix-arena.service.example
 require_text 'ReadWritePaths=/home/micu/vix/data' systemd/vix-arena.service.example
 require_text 'CapabilityBoundingSet=' systemd/vix-arena.service.example
 require_text 'SystemCallFilter=@system-service' systemd/vix-arena.service.example
+require_text 'pathInside' src/main.cpp
 
 require_absent 'APP_HOST=0\.0\.0\.0' systemd/vix-arena.service.example
+require_absent 'innerHTML' public/app.js public/stats.js
 require_absent 'password *= *"[^"]+"' src public scripts docs README.md CMakeLists.txt systemd
 require_absent 'api[_-]?key *= *"[^"]+"' src public scripts docs README.md CMakeLists.txt systemd
 require_absent 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY' src public scripts docs README.md CMakeLists.txt systemd

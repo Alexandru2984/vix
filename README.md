@@ -199,7 +199,7 @@ WS_SHARDED_ROOMS=10 \
 scripts/benchmark_extreme.sh
 ```
 
-See [BENCHMARK.md](BENCHMARK.md) for measured HTTP/WebSocket results, interpretation notes, and the current CV-ready benchmark wording.
+See [BENCHMARK.md](BENCHMARK.md) for measured HTTP/WebSocket results, interpretation notes, and the current CV-ready benchmark wording. See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the latest practical security review.
 
 ## Features
 

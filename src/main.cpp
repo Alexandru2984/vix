@@ -353,6 +353,20 @@ namespace
     return true;
   }
 
+  bool pathInside(const std::filesystem::path &root, const std::filesystem::path &path)
+  {
+    std::error_code ec;
+    const auto canonicalRoot = std::filesystem::weakly_canonical(root, ec);
+    if (ec)
+      return false;
+    const auto canonicalPath = std::filesystem::weakly_canonical(path, ec);
+    if (ec)
+      return false;
+
+    const auto mismatch = std::mismatch(canonicalRoot.begin(), canonicalRoot.end(), canonicalPath.begin(), canonicalPath.end());
+    return mismatch.first == canonicalRoot.end();
+  }
+
   bool safeTarget(std::string_view target)
   {
     return !target.empty() &&
@@ -815,7 +829,8 @@ namespace
         return;
       }
 
-      std::filesystem::path path = root_ / "public";
+      const std::filesystem::path publicRoot = root_ / "public";
+      std::filesystem::path path = publicRoot;
       if (target == "/")
       {
         path /= "index.html";
@@ -837,6 +852,18 @@ namespace
           return;
         }
         path /= relative;
+      }
+
+      std::error_code ec;
+      if (!std::filesystem::exists(path, ec))
+      {
+        res = makeResponse(req_, http::status::not_found, "not found", "text/plain; charset=utf-8");
+        return;
+      }
+      if (!pathInside(publicRoot, path))
+      {
+        res = makeResponse(req_, http::status::bad_request, "bad request", "text/plain; charset=utf-8");
+        return;
       }
 
       std::string body;
