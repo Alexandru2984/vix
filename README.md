@@ -187,6 +187,17 @@ BENCH_GATE_MIN_WS_CLIENTS=200 \
 BENCH_GATE_MAX_WS_P95_MS=300 \
 scripts/benchmark_one_step.sh
 
+# One-step extreme profile:
+SOURCE_IP=81.181.166.237 \
+ORIGIN_SSH=micu@<origin-ip> \
+TARGET=https://vix.micutu.com \
+BENCHMARK_SUITE=extreme \
+RUN_BENCHMARK_GATE=true \
+BENCH_GATE_MIN_HTTP_RPS=12000 \
+BENCH_GATE_MIN_WS_CLIENTS=500 \
+BENCH_GATE_MAX_WS_P95_MS=350 \
+scripts/benchmark_one_step.sh
+
 # Or run just the local load suite from the benchmark VPS:
 TARGET=https://vix.micutu.com DURATION_SECONDS=60 WS_CLIENTS_HIGH=200 WS_ROOMS_HIGH=4 scripts/benchmark_suite.sh
 

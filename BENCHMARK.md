@@ -122,6 +122,20 @@ BENCH_GATE_MAX_WS_P95_MS=300 \
 scripts/benchmark_one_step.sh
 ```
 
+For the full extreme suite, add `BENCHMARK_SUITE=extreme`:
+
+```bash
+SOURCE_IP=81.181.166.237 \
+ORIGIN_SSH=micu@57.129.112.224 \
+TARGET=https://vix.micutu.com \
+BENCHMARK_SUITE=extreme \
+RUN_BENCHMARK_GATE=true \
+BENCH_GATE_MIN_HTTP_RPS=12000 \
+BENCH_GATE_MIN_WS_CLIENTS=500 \
+BENCH_GATE_MAX_WS_P95_MS=350 \
+scripts/benchmark_one_step.sh
+```
+
 The extreme script currently runs:
 
 - HTTP spike tests for `/`, `/api/state`, and `/api/stats`
