@@ -85,4 +85,8 @@ curl -fsS "${TARGET}/api/stats" >"${RESULT_DIR}/stats-after.json" || true
   grep -R "Requests/sec\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|Latency\\|welcomed\\|snapshots\\|p95\\|load test ok" "${RESULT_DIR}"/*.log 2>/dev/null || true
 } | tee "${RESULT_DIR}/summary.txt"
 
+if command -v node >/dev/null 2>&1; then
+  node "${ROOT_DIR}/scripts/benchmark_report.mjs" "${RESULT_DIR}" || true
+fi
+
 echo "benchmark suite done: ${RESULT_DIR}"

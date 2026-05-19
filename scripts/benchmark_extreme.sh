@@ -157,4 +157,8 @@ curl -fsS "${TARGET}/api/stats" >"${RESULT_DIR}/stats-after.json" || true
   grep -R "Requests/sec\\|Transfer/sec\\|Latency\\|Status code distribution\\|\\[200\\]\\|\\[429\\]\\|welcomed\\|welcomedCount\\|connectAttempts\\|serverErrors\\|expectedDefensiveErrors\\|unexpectedServerErrors\\|snapshots\\|p95\\|load test ok" "${RESULT_DIR}"/*.log 2>/dev/null || true
 } | tee "${RESULT_DIR}/summary.txt"
 
+if command -v node >/dev/null 2>&1; then
+  node "${ROOT_DIR}/scripts/benchmark_report.mjs" "${RESULT_DIR}" || true
+fi
+
 echo "extreme benchmark done: ${RESULT_DIR}"

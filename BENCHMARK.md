@@ -51,6 +51,8 @@ WS_ROOMS_HIGH=4 \
 scripts/benchmark_suite.sh
 ```
 
+The suite writes raw logs plus `summary.txt`, `report.json`, and `report.md` into `benchmark-results/<timestamp>/`.
+
 Latest standard result:
 
 | Test | Result |
@@ -76,6 +78,8 @@ WS_SHARDED_CLIENTS=500 \
 WS_SHARDED_ROOMS=10 \
 scripts/benchmark_extreme.sh
 ```
+
+The extreme suite also writes raw logs plus `summary.txt`, `report.json`, and `report.md` into `benchmark-results/extreme-<timestamp>/`.
 
 The extreme script currently runs:
 
