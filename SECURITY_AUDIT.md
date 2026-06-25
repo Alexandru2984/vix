@@ -49,6 +49,18 @@ Fix:
 - pruned empty private rooms and their chat history after the last human leaves
 - exposed the active-room cap/count in stats and added regression coverage
 
+### Restricted CSP WebSocket destinations
+
+Severity: low
+
+The app CSP used `connect-src 'self' ws: wss:`, which allowed browser code running in the app origin to open WebSocket connections to any host. The application does not load third-party scripts and did not have an obvious XSS path, but broad `connect-src` makes future injection bugs more useful for exfiltration or pivoting.
+
+Fix:
+
+- replaced wildcard WebSocket schemes with same-authority `ws://<host>` and `wss://<host>` sources
+- validates the Host authority before reflecting it into the CSP header
+- added an audit check to reject the broad `ws:`/`wss:` directive
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

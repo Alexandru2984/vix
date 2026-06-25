@@ -430,6 +430,37 @@ namespace
            target.rfind("/api/", 0) == 0;
   }
 
+  bool safeAuthorityForCsp(std::string_view value)
+  {
+    return !value.empty() && value.size() <= 253 &&
+           std::all_of(value.begin(), value.end(), [](unsigned char c)
+                       {
+                         return std::isalnum(c) ||
+                                c == '.' ||
+                                c == '-' ||
+                                c == ':' ||
+                                c == '[' ||
+                                c == ']'; });
+  }
+
+  template <class Body, class Allocator>
+  std::string cspConnectSrc(const http::request<Body, http::basic_fields<Allocator>> &req)
+  {
+    const auto hostIt = req.find(http::field::host);
+    if (hostIt == req.end())
+    {
+      return "'self'";
+    }
+
+    std::string host = trim(std::string(hostIt->value()));
+    if (!safeAuthorityForCsp(host))
+    {
+      return "'self'";
+    }
+
+    return "'self' ws://" + host + " wss://" + host;
+  }
+
   std::string firstForwardedAddress(std::string value)
   {
     if (const auto comma = value.find(','); comma != std::string::npos)
@@ -485,16 +516,18 @@ namespace
     res.set(http::field::x_frame_options, "DENY");
     res.set("Referrer-Policy", "no-referrer");
     res.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)");
-    res.set("Content-Security-Policy",
-            "default-src 'self'; "
-            "connect-src 'self' ws: wss:; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "worker-src 'self'; "
-            "manifest-src 'self'; "
-            "base-uri 'self'; "
-            "frame-ancestors 'none'");
+    const std::string contentSecurityPolicy =
+        "default-src 'self'; "
+        "connect-src " +
+        cspConnectSrc(req) +
+        "; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "worker-src 'self'; "
+        "manifest-src 'self'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'";
+    res.set("Content-Security-Policy", contentSecurityPolicy);
     res.keep_alive(req.keep_alive());
     res.body() = std::move(body);
     res.prepare_payload();

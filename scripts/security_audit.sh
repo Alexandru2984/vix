@@ -38,6 +38,7 @@ require_text 'APP_HOST=127\.0\.0\.1' README.md
 require_text 'ALLOW_MISSING_ORIGIN=false' README.md
 require_text 'WebSocket payloads are capped at 4096 bytes' public/docs.html
 require_text 'Content-Security-Policy' src/main.cpp
+require_text 'cspConnectSrc' src/main.cpp
 require_text 'x_frame_options' src/main.cpp
 require_text 'X-Content-Type-Options' src/main.cpp
 require_text 'Referrer-Policy' src/main.cpp
@@ -58,6 +59,7 @@ require_text 'SystemCallFilter=@system-service' systemd/vix-arena.service.exampl
 require_text 'pathInside' src/main.cpp
 
 require_absent 'APP_HOST=0\.0\.0\.0' systemd/vix-arena.service.example
+require_absent "connect-src 'self' ws: wss:" src/main.cpp
 require_absent 'innerHTML' public/app.js public/stats.js
 require_absent 'password *= *"[^"]+"' src public scripts docs README.md CMakeLists.txt systemd
 require_absent 'api[_-]?key *= *"[^"]+"' src public scripts docs README.md CMakeLists.txt systemd
