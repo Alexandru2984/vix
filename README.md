@@ -53,7 +53,7 @@ The container binds to `0.0.0.0` internally and publishes port `18080` by defaul
 APP_PORT=18082 docker compose up --build
 ```
 
-The Docker image runs the app as non-root UID/GID `10001`. The compose profile uses a named `vix-data` volume for `/app/data`, drops Linux capabilities, prevents privilege escalation, and runs the container filesystem read-only except for the data volume and `/tmp`.
+The Docker image uses a multi-stage build so the runtime layer contains the app binary, static assets, migrations, and required shared libraries without the compiler toolchain. It runs the app as non-root UID/GID `10001`. The compose profile uses a named `vix-data` volume for `/app/data`, drops Linux capabilities, prevents privilege escalation, and runs the container filesystem read-only except for the data volume and `/tmp`.
 
 ## CMake Presets
 

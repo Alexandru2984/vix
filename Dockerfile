@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS build
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -19,6 +19,21 @@ COPY . .
 RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
   && cmake --build build --parallel \
   && ctest --test-dir build --output-on-failure
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libboost-system1.74.0 \
+    libpqxx-6.4 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=build /app/build/vix-arena /app/build/vix-arena
+COPY --from=build /app/public /app/public
+COPY --from=build /app/migrations /app/migrations
 
 ENV APP_HOST=0.0.0.0
 ENV APP_PORT=18080

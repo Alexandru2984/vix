@@ -86,6 +86,18 @@ Fix:
 - enabled read-only container filesystem, `no-new-privileges`, `cap_drop: ALL`, and a `/tmp` tmpfs in Compose
 - added audit checks for these container hardening controls
 
+### Removed build toolchain from Docker runtime
+
+Severity: low
+
+The Dockerfile built and ran the application in the same image layer, leaving compilers, CMake, headers, and build tools available at runtime. Those tools are not needed by the service and increase post-compromise utility inside the container.
+
+Fix:
+
+- converted Dockerfile to a multi-stage build
+- kept CMake, compiler, headers, and tests in the build stage only
+- copied only the app binary, public assets, migrations, and required runtime libraries into the runtime stage
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low
