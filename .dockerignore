@@ -1,11 +1,17 @@
 .git
 .env
+.env.*
+data
 build
 build-*
 cmake-build-*
 CMakeFiles
 CMakeCache.txt
 compile_commands.json
+node_modules
+playwright-report
+test-results
+benchmark-results
 *.log
 *.pid
 *.tmp

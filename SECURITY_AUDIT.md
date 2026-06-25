@@ -98,6 +98,18 @@ Fix:
 - kept CMake, compiler, headers, and tests in the build stage only
 - copied only the app binary, public assets, migrations, and required runtime libraries into the runtime stage
 
+### Excluded env backups from Docker build context
+
+Severity: medium
+
+`.dockerignore` excluded `.env` but not `.env.*`. Local benchmark backup files matched `.env.benchmark-backup-*`, so they were ignored by Git but still eligible to be sent to the Docker daemon and copied into the build stage by `COPY . .`.
+
+Fix:
+
+- added `.env.*` to `.dockerignore`
+- excluded local data, `node_modules`, Playwright results, test results, and benchmark results from the Docker context
+- added audit checks for sensitive Docker context excludes
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low
