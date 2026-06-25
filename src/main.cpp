@@ -44,7 +44,7 @@ namespace
   struct AppConfig
   {
     std::set<std::string> allowedOrigins;
-    bool allowMissingOrigin{true};
+    bool allowMissingOrigin{false};
   };
 
   struct HttpRateLimitBucket
@@ -1009,7 +1009,7 @@ int main()
   const double benchmarkHttpRateRefillPerSecond = std::max(httpRateRefillPerSecond, envDouble(fileEnv, "BENCHMARK_HTTP_RATE_LIMIT_REFILL_PER_SECOND", 1000.0));
   gHttpRateLimiter.configure(httpRateBurst, httpRateRefillPerSecond, gameLimits.benchmarkSourceIps, benchmarkHttpRateBurst, benchmarkHttpRateRefillPerSecond);
   AppConfig config;
-  config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", publicUrl.empty());
+  config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", false);
   config.allowedOrigins = parseOriginList(envString(fileEnv, "ALLOWED_ORIGINS", ""));
   if (const std::string publicOrigin = originFromUrl(publicUrl); !publicOrigin.empty())
     config.allowedOrigins.insert(publicOrigin);

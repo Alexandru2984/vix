@@ -61,6 +61,18 @@ Fix:
 - validates the Host authority before reflecting it into the CSP header
 - added an audit check to reject the broad `ws:`/`wss:` directive
 
+### Default-denied missing WebSocket Origin
+
+Severity: low
+
+When `ALLOW_MISSING_ORIGIN` was not configured, the server allowed missing WebSocket Origin headers if `PUBLIC_URL` was empty. That is convenient for ad hoc non-browser clients, but it is risky if an operator exposes a default local/dev configuration directly. Browser cross-site WebSocket attempts include an Origin header, yet non-browser clients can omit it.
+
+Fix:
+
+- changed the default for missing Origin headers to deny
+- kept `ALLOW_MISSING_ORIGIN=true` as an explicit opt-in for trusted non-browser clients
+- updated documentation to describe the safer default
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

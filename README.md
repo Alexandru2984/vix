@@ -150,7 +150,7 @@ BENCHMARK_HTTP_RATE_LIMIT_REFILL_PER_SECOND=1000
 ```
 
 `APP_PORT` serves both HTTP and WebSocket traffic. The WebSocket endpoint is `/ws`.
-`ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are rejected in production with `ALLOW_MISSING_ORIGIN=false`.
+`ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are rejected by default with `ALLOW_MISSING_ORIGIN=false`; set it to `true` only for trusted non-browser clients that cannot send an Origin header.
 `DATA_DIR` stores the JSON fallback leaderboard and match history in `vix-arena-state.json`.
 `DATABASE_URL` enables PostgreSQL persistence for completed rounds, match participants, leaderboard reads, and match history reads. If PostgreSQL is missing or unavailable, the app logs the error and keeps serving from the JSON fallback instead of failing startup.
 The `MAX_CONNECTIONS_PER_IP`, `MAX_ACTIVE_ROOMS`, `WS_MESSAGE_*`, `MAX_INVALID_MESSAGES_PER_CONNECTION`, and `HTTP_RATE_LIMIT_*` values are runtime safety limits. Private rooms are capped globally by `MAX_ACTIVE_ROOMS` and empty private rooms are pruned after the last player leaves. `BENCHMARK_SOURCE_IPS` is a comma-separated allowlist of trusted benchmark IPs that receive the higher `BENCHMARK_*` limits while normal visitors keep the production defaults.
