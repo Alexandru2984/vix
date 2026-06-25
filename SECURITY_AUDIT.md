@@ -36,6 +36,19 @@ The project already has the important production controls in place:
 
 ## Findings Fixed In This Pass
 
+### Capped active private rooms
+
+Severity: medium
+
+Room codes come from client-controlled join messages. The server capped players per room and connections per IP, but it did not cap the total number of active rooms. A distributed or proxy-based attacker could create many low-population private rooms and force unbounded growth in room state, bot state, chat history, and per-tick work.
+
+Fix:
+
+- added `MAX_ACTIVE_ROOMS`, defaulting to `128`
+- rejected joins that would create a room above the active-room cap
+- pruned empty private rooms and their chat history after the last human leaves
+- exposed the active-room cap/count in stats and added regression coverage
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

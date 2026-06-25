@@ -27,6 +27,7 @@ namespace arena
     struct Limits
     {
       std::size_t maxPlayersPerRoom{64};
+      std::size_t maxActiveRooms{128};
       std::size_t maxConnectionsPerIp{16};
       double wsMessageBurst{36.0};
       double wsMessageRefillPerSecond{14.0};
@@ -170,6 +171,8 @@ namespace arena
     [[nodiscard]] std::size_t botCountLocked() const;
     [[nodiscard]] std::size_t humanCountLocked(const std::string &roomCode) const;
     [[nodiscard]] std::size_t botCountLocked(const std::string &roomCode) const;
+    [[nodiscard]] bool canCreateRoomLocked(const std::string &roomCode) const;
+    void pruneEmptyRoomLocked(const std::string &roomCode);
     [[nodiscard]] RoomState &roomStateLocked(const std::string &roomCode);
     [[nodiscard]] const RoomState *roomStateLocked(const std::string &roomCode) const;
     [[nodiscard]] std::vector<std::string> activeRoomCodesLocked() const;

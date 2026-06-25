@@ -268,6 +268,7 @@ namespace arena
         if (humanCountLocked(roomCode) == 0)
         {
           removeBotsLocked(roomCode);
+          pruneEmptyRoomLocked(roomCode);
         }
       }
     }
@@ -486,6 +487,13 @@ namespace arena
         if (humanCountLocked(roomCode) >= maxPlayersForIpLocked(session ? session->remoteAddress : ""))
         {
           welcome = errorMessage("arena full");
+          history.clear();
+          snapshot.clear();
+          newPlayer = false;
+        }
+        else if (!canCreateRoomLocked(roomCode))
+        {
+          welcome = errorMessage("too many active rooms");
           history.clear();
           snapshot.clear();
           newPlayer = false;
@@ -995,6 +1003,30 @@ namespace arena
   {
     return static_cast<std::size_t>(std::count_if(players_.begin(), players_.end(), [&](const auto &entry)
                                                  { return entry.second.bot && entry.second.roomCode == roomCode; }));
+  }
+
+  bool GameServer::canCreateRoomLocked(const std::string &roomCode) const
+  {
+    const std::string normalized = roomCode.empty() ? "public" : roomCode;
+    if (rooms_.contains(normalized))
+    {
+      return true;
+    }
+    return rooms_.size() < limits_.maxActiveRooms;
+  }
+
+  void GameServer::pruneEmptyRoomLocked(const std::string &roomCode)
+  {
+    if (roomCode.empty() || roomCode == "public")
+    {
+      return;
+    }
+    if (humanCountLocked(roomCode) != 0 || botCountLocked(roomCode) != 0)
+    {
+      return;
+    }
+    rooms_.erase(roomCode);
+    chatHistoryByRoom_.erase(roomCode);
   }
 
   void GameServer::ensureBotsLocked(std::chrono::steady_clock::time_point now)
@@ -2444,6 +2476,7 @@ namespace arena
         {"globalHumanPlayers", humanCountLocked()},
         {"globalBotPlayers", botCountLocked()},
         {"maxPlayers", limits_.maxPlayersPerRoom},
+        {"maxActiveRooms", limits_.maxActiveRooms},
         {"uptimeSeconds", uptimeSeconds(startedAt_)},
         {"tickRateTarget", tickRateTarget_},
         {"protocolVersion", protocolVersion},
@@ -2479,7 +2512,9 @@ namespace arena
         {"websocket", {
                           {"activeConnections", sessionAbuse_.size()},
                           {"activeRemoteAddresses", connectionsByIp_.size()},
+                          {"activeRooms", rooms_.size()},
                           {"maxPlayersPerRoom", limits_.maxPlayersPerRoom},
+                          {"maxActiveRooms", limits_.maxActiveRooms},
                           {"benchmarkMaxPlayersPerRoom", limits_.benchmarkMaxPlayersPerRoom},
                           {"maxConnectionsPerIp", limits_.maxConnectionsPerIp},
                           {"messageBurst", limits_.wsMessageBurst},

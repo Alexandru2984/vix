@@ -960,6 +960,7 @@ int main()
   const std::filesystem::path dataDir = envString(fileEnv, "DATA_DIR", (root / "data").string());
   arena::GameServer::Limits gameLimits;
   gameLimits.maxPlayersPerRoom = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_PLAYERS_PER_ROOM", static_cast<int>(gameLimits.maxPlayersPerRoom))));
+  gameLimits.maxActiveRooms = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_ACTIVE_ROOMS", static_cast<int>(gameLimits.maxActiveRooms))));
   gameLimits.maxConnectionsPerIp = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_CONNECTIONS_PER_IP", static_cast<int>(gameLimits.maxConnectionsPerIp))));
   gameLimits.wsMessageBurst = std::max(1.0, envDouble(fileEnv, "WS_MESSAGE_BURST", gameLimits.wsMessageBurst));
   gameLimits.wsMessageRefillPerSecond = std::max(0.1, envDouble(fileEnv, "WS_MESSAGE_REFILL_PER_SECOND", gameLimits.wsMessageRefillPerSecond));
@@ -1012,6 +1013,7 @@ int main()
                                          {"allowedOrigins", config.allowedOrigins},
                                          {"allowMissingOrigin", config.allowMissingOrigin},
                                          {"maxPlayersPerRoom", gameLimits.maxPlayersPerRoom},
+                                         {"maxActiveRooms", gameLimits.maxActiveRooms},
                                          {"maxConnectionsPerIp", gameLimits.maxConnectionsPerIp},
                                          {"wsMessageBurst", gameLimits.wsMessageBurst},
                                          {"wsMessageRefillPerSecond", gameLimits.wsMessageRefillPerSecond},

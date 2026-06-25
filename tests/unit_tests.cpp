@@ -290,6 +290,7 @@ namespace
   {
     arena::GameServer::Limits limits;
     limits.maxPlayersPerRoom = 2;
+    limits.maxActiveRooms = 3;
     limits.maxConnectionsPerIp = 2;
     limits.wsMessageBurst = 3.0;
     limits.wsMessageRefillPerSecond = 0.1;
@@ -341,13 +342,45 @@ namespace
     }
     const auto stats = server.statsJson();
     requireEq(stats.value("maxPlayers", 0), 2, "stats should expose custom room player cap");
+    requireEq(stats.value("maxActiveRooms", 0), 3, "stats should expose custom room cap");
     requireEq(stats.at("websocket").value("maxPlayersPerRoom", 0), 2, "websocket stats should expose custom room player cap");
+    requireEq(stats.at("websocket").value("maxActiveRooms", 0), 3, "websocket stats should expose custom room cap");
     requireEq(stats.at("websocket").value("benchmarkMaxPlayersPerRoom", 0), 4, "websocket stats should expose benchmark room player cap");
     requireEq(stats.at("websocket").value("maxConnectionsPerIp", 0), 2, "stats should expose custom connection cap");
     requireEq(stats.at("websocket").value("benchmarkSourceIps", 0), 1, "stats should expose benchmark source count");
     requireEq(stats.at("websocket").value("benchmarkMaxConnectionsPerIp", 0), 4, "stats should expose benchmark connection cap");
     requireEq(stats.at("websocket").value("maxInvalidMessagesPerConnection", 0), 2, "stats should expose custom invalid-message cap");
     require(stats.at("websocket").value("rateLimitRejects", 0) >= 1, "custom websocket burst should rate limit");
+  }
+
+  void gameServerCapsActiveRooms()
+  {
+    arena::GameServer::Limits limits;
+    limits.maxActiveRooms = 2;
+    arena::GameServer server({}, "", {}, limits);
+
+    CapturedClient alpha;
+    CapturedClient rejected;
+    require(server.onOpen(alpha.connection), "alpha client should open");
+    require(server.onOpen(rejected.connection), "rejected client should open");
+
+    server.onMessage(alpha.connection.get(), R"({"type":"join","name":"Alpha","room":"alpha-room"})");
+    require(alpha.sawType("welcome"), "first private room should fit active room cap");
+
+    server.onMessage(rejected.connection.get(), R"({"type":"join","name":"Beta","room":"beta-room"})");
+    requireEq(rejected.messages.back().value("type", ""), std::string("error"), "room above cap should be rejected");
+    requireEq(rejected.messages.back().value("message", ""), std::string("too many active rooms"), "room cap error message");
+
+    const auto cappedStats = server.statsJson();
+    requireEq(cappedStats.at("websocket").value("activeRooms", 0), 2, "stats should count public plus alpha room");
+
+    server.onClose(alpha.connection.get());
+
+    CapturedClient beta;
+    require(server.onOpen(beta.connection), "replacement client should open");
+    server.onMessage(beta.connection.get(), R"({"type":"join","name":"Beta","room":"beta-room"})");
+    const auto *welcome = beta.firstType("welcome");
+    require(welcome != nullptr && welcome->value("room", "") == "beta-room", "empty private room should be pruned and replaced");
   }
 
   void gameServerIsolatesRooms()
@@ -481,6 +514,7 @@ int main()
     run("game server exposes stats and metrics", gameServerExposesStatsAndMetrics);
     run("game server limits connection and protocol abuse", gameServerLimitsConnectionAndProtocolAbuse);
     run("game server applies configurable limits", gameServerAppliesConfigurableLimits);
+    run("game server caps active rooms", gameServerCapsActiveRooms);
     run("game server isolates rooms", gameServerIsolatesRooms);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);

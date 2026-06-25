@@ -45,6 +45,10 @@ require_text 'Permissions-Policy' src/main.cpp
 require_text 'maxWsPayloadBytes' src/GameServer.cpp
 require_text 'allowMissingOrigin' src/main.cpp
 require_text 'HttpRateLimiter' src/main.cpp
+require_text 'MAX_ACTIVE_ROOMS=128' README.md
+require_text 'MAX_ACTIVE_ROOMS' src/main.cpp
+require_text 'canCreateRoomLocked' src/GameServer.cpp
+require_text 'pruneEmptyRoomLocked' src/GameServer.cpp
 require_text 'token bucket' README.md
 require_text 'NoNewPrivileges=true' systemd/vix-arena.service.example
 require_text 'ProtectSystem=strict' systemd/vix-arena.service.example

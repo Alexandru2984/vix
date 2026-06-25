@@ -133,6 +133,7 @@ ALLOW_MISSING_ORIGIN=false
 DATA_DIR=/home/micu/vix/data
 DATABASE_URL=postgresql:///vix_arena
 MAX_PLAYERS_PER_ROOM=64
+MAX_ACTIVE_ROOMS=128
 MAX_CONNECTIONS_PER_IP=16
 WS_MESSAGE_BURST=36
 WS_MESSAGE_REFILL_PER_SECOND=14
@@ -152,7 +153,7 @@ BENCHMARK_HTTP_RATE_LIMIT_REFILL_PER_SECOND=1000
 `ALLOWED_ORIGINS` is a comma-separated browser Origin allowlist for WebSocket upgrades. Missing Origin headers are rejected in production with `ALLOW_MISSING_ORIGIN=false`.
 `DATA_DIR` stores the JSON fallback leaderboard and match history in `vix-arena-state.json`.
 `DATABASE_URL` enables PostgreSQL persistence for completed rounds, match participants, leaderboard reads, and match history reads. If PostgreSQL is missing or unavailable, the app logs the error and keeps serving from the JSON fallback instead of failing startup.
-The `MAX_CONNECTIONS_PER_IP`, `WS_MESSAGE_*`, `MAX_INVALID_MESSAGES_PER_CONNECTION`, and `HTTP_RATE_LIMIT_*` values are runtime safety limits. `BENCHMARK_SOURCE_IPS` is a comma-separated allowlist of trusted benchmark IPs that receive the higher `BENCHMARK_*` limits while normal visitors keep the production defaults.
+The `MAX_CONNECTIONS_PER_IP`, `MAX_ACTIVE_ROOMS`, `WS_MESSAGE_*`, `MAX_INVALID_MESSAGES_PER_CONNECTION`, and `HTTP_RATE_LIMIT_*` values are runtime safety limits. Private rooms are capped globally by `MAX_ACTIVE_ROOMS` and empty private rooms are pruned after the last player leaves. `BENCHMARK_SOURCE_IPS` is a comma-separated allowlist of trusted benchmark IPs that receive the higher `BENCHMARK_*` limits while normal visitors keep the production defaults.
 
 Benchmark profile for source IP `81.181.166.237`:
 
