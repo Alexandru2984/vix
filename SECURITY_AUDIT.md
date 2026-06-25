@@ -73,6 +73,19 @@ Fix:
 - kept `ALLOW_MISSING_ORIGIN=true` as an explicit opt-in for trusted non-browser clients
 - updated documentation to describe the safer default
 
+### Hardened Docker runtime privileges
+
+Severity: medium
+
+The Docker image did not declare a non-root user, so the app process ran as root inside the container. A container escape is not implied by that alone, but root in-container increases blast radius for file writes, mounted volumes, and future runtime misconfiguration.
+
+Fix:
+
+- added a dedicated non-root UID/GID `10001` in the Docker image
+- switched Docker Compose persistence to a managed `vix-data` volume
+- enabled read-only container filesystem, `no-new-privileges`, `cap_drop: ALL`, and a `/tmp` tmpfs in Compose
+- added audit checks for these container hardening controls
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

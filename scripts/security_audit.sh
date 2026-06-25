@@ -58,6 +58,10 @@ require_text 'ReadWritePaths=/home/micu/vix/data' systemd/vix-arena.service.exam
 require_text 'CapabilityBoundingSet=' systemd/vix-arena.service.example
 require_text 'SystemCallFilter=@system-service' systemd/vix-arena.service.example
 require_text 'pathInside' src/main.cpp
+require_text 'USER 10001:10001' Dockerfile
+require_text 'read_only: true' docker-compose.yml
+require_text 'no-new-privileges:true' docker-compose.yml
+require_text 'cap_drop:' docker-compose.yml
 
 require_absent 'APP_HOST=0\.0\.0\.0' systemd/vix-arena.service.example
 require_absent "connect-src 'self' ws: wss:" src/main.cpp

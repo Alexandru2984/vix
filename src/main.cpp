@@ -738,7 +738,8 @@ namespace
       if (ec)
         return;
 
-      const std::string targetPath = pathOnly(req_.target());
+      const auto requestTarget = req_.target();
+      const std::string targetPath = pathOnly(std::string_view(requestTarget.data(), requestTarget.size()));
       if (websocket::is_upgrade(req_) && targetPath == "/ws")
       {
         if (!originAllowed(req_, config_))
@@ -761,7 +762,8 @@ namespace
     void handleRequest()
     {
       http::response<http::string_body> res;
-      std::string target(req_.target());
+      const auto requestTarget = req_.target();
+      std::string target(requestTarget.data(), requestTarget.size());
       std::string query;
       if (target.size() > 2048)
       {

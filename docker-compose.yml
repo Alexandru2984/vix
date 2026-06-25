@@ -7,8 +7,18 @@ services:
       PUBLIC_URL: http://localhost:18080
       ALLOWED_ORIGINS: http://localhost:${APP_PORT:-18080},http://127.0.0.1:${APP_PORT:-18080}
       DATA_DIR: /app/data
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
     volumes:
-      - ./data:/app/data
+      - vix-data:/app/data
     ports:
       - "${APP_PORT:-18080}:18080"
     restart: unless-stopped
+
+volumes:
+  vix-data:

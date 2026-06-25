@@ -8,7 +8,9 @@ RUN apt-get update \
     make \
     ninja-build \
     libboost-system-dev \
+    libpqxx-dev \
     nlohmann-json3-dev \
+    pkg-config \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,8 +26,13 @@ ENV PUBLIC_URL=http://localhost:18080
 ENV ALLOWED_ORIGINS=http://localhost:18080,http://127.0.0.1:18080
 ENV DATA_DIR=/app/data
 
-RUN mkdir -p /app/data
+RUN groupadd --system --gid 10001 vix \
+  && useradd --system --uid 10001 --gid vix --home-dir /nonexistent --shell /usr/sbin/nologin vix \
+  && mkdir -p /app/data \
+  && chown -R vix:vix /app/data
 
 EXPOSE 18080
+
+USER 10001:10001
 
 CMD ["./build/vix-arena"]
