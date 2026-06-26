@@ -123,6 +123,18 @@ Fix:
 - prune the in-memory fallback leaderboard after round recording
 - added unit coverage for oversized state and leaderboard caps
 
+### Validated benchmark source IP before SSH
+
+Severity: medium
+
+`benchmark_one_step.sh` passed `SOURCE_IP` into a remote SSH command before local validation. The remote `benchmark_profile.sh` validates the value, but shell parsing happens first, so a malicious local `SOURCE_IP` value could alter the remote command.
+
+Fix:
+
+- validate `SOURCE_IP` locally before usage
+- reject values outside IPv4/IPv6 address characters before any SSH command is built
+- added an audit check for the local validation guard
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

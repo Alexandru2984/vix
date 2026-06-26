@@ -53,6 +53,7 @@ require_text 'canCreateRoomLocked' src/GameServer.cpp
 require_text 'pruneEmptyRoomLocked' src/GameServer.cpp
 require_text 'maxPersistentStateBytes_' src/GameServer.cpp
 require_text 'maxPersistentLeaderboardEntries_' src/GameServer.cpp
+require_text 'invalid SOURCE_IP' scripts/benchmark_one_step.sh
 require_text 'token bucket' README.md
 require_text 'NoNewPrivileges=true' systemd/vix-arena.service.example
 require_text 'ProtectSystem=strict' systemd/vix-arena.service.example

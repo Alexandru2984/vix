@@ -18,6 +18,11 @@ if [[ -z "${SOURCE_IP}" ]]; then
   SOURCE_IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
 fi
 
+if [[ -n "${SOURCE_IP}" && ! "${SOURCE_IP}" =~ ^[0-9A-Fa-f:.]+$ ]]; then
+  echo "invalid SOURCE_IP: ${SOURCE_IP}" >&2
+  exit 2
+fi
+
 if [[ -z "${SOURCE_IP}" || -z "${ORIGIN_SSH}" ]]; then
   cat >&2 <<'EOF'
 Usage from the benchmark VPS:
