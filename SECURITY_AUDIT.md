@@ -135,6 +135,18 @@ Fix:
 - reject values outside IPv4/IPv6 address characters before any SSH command is built
 - added an audit check for the local validation guard
 
+### Removed inline style allowance from CSP
+
+Severity: low
+
+The CSP still allowed inline styles because the docs page contained a small `<style>` block. Inline style is much lower risk than inline script, but removing it makes the policy easier to reason about and prevents future style-injection regressions.
+
+Fix:
+
+- moved docs page styles into `public/styles.css`
+- changed CSP to `style-src 'self'`
+- added audit checks that reject `<style>` blocks in HTML pages and `'unsafe-inline'` in CSP
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

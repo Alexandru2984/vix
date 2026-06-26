@@ -9,19 +9,8 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css?v=hazards-20260518">
-    <style>
-      body { height: auto; min-height: 100%; overflow: visible; position: static; inset: auto; }
-      .doc { max-width: 980px; margin: 0 auto; padding: 34px 18px 70px; line-height: 1.58; }
-      .doc h1 { font-size: 30px; margin-bottom: 10px; }
-      .doc h2 { margin-top: 28px; margin-bottom: 8px; font-size: 20px; }
-      .doc p, .doc li { color: var(--muted); }
-      .doc code, .doc pre { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 6px; }
-      .doc code { padding: 2px 5px; }
-      .doc pre { padding: 14px; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); }
-      .doc a { color: var(--accent); }
-    </style>
   </head>
-  <body>
+  <body class="docs-page">
     <main class="doc">
       <h1>VixArena</h1>
       <p>VixArena is a minimalist real-time 2D multiplayer arena built with a C++ backend. Vix.cpp was installed and evaluated on this VPS, then a Boost.Beast production fallback was used because the available Vix HTTP listener did not bind localhost-only. The app keeps authoritative in-memory game state, fills solo arenas with server-side bots, accepts WebSocket input and abilities, broadcasts snapshots at 20 ticks/sec, persists completed matches to PostgreSQL, and serves a plain browser canvas frontend with PWA metadata, a room browser, lobby leaderboard preview, round summary overlay, settings drawer, an objective HUD, minimap, danger zones, edge target markers, score popups, FPS and snapshot-rate indicators, quick pings, sound toggle, reduced-effects mode, and touch controls.</p>

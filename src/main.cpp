@@ -521,7 +521,7 @@ namespace
         "connect-src " +
         cspConnectSrc(req) +
         "; script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "style-src 'self'; "
         "img-src 'self' data:; "
         "worker-src 'self'; "
         "manifest-src 'self'; "
