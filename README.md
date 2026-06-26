@@ -383,6 +383,7 @@ The application also runs pending `migrations/*.sql` files automatically on star
 - WebSocket connections are capped per remote address before entering the arena.
 - WebSocket messages use a per-connection token bucket to reduce spam bursts.
 - Repeated invalid WebSocket protocol messages close the connection.
+- HTTP request headers and bodies are bounded before routing.
 - Dynamic HTTP endpoints use a lightweight per-client token bucket rate limit.
 - Per-client WebSocket outboxes are capped to avoid unbounded memory growth.
 - Danger-zone damage is computed server-side and shield immunity is enforced server-side.

@@ -48,6 +48,9 @@ require_text 'maxWsPayloadBytes' src/GameServer.cpp
 require_text 'allowMissingOrigin' src/main.cpp
 require_text 'ALLOW_MISSING_ORIGIN", false' src/main.cpp
 require_text 'HttpRateLimiter' src/main.cpp
+require_text 'maxHttpRequestBodyBytes' src/main.cpp
+require_text 'body_limit' src/main.cpp
+require_text 'header_limit' src/main.cpp
 require_text 'MAX_ACTIVE_ROOMS=128' README.md
 require_text 'MAX_ACTIVE_ROOMS' src/main.cpp
 require_text 'canCreateRoomLocked' src/GameServer.cpp

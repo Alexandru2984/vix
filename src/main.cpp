@@ -37,6 +37,8 @@ namespace
 {
   constexpr std::size_t maxWsOutboxMessages = 128;
   constexpr std::size_t maxWsOutboxBytes = 1024 * 1024;
+  constexpr std::uint64_t maxHttpRequestBodyBytes = 8 * 1024;
+  constexpr std::uint32_t maxHttpRequestHeaderBytes = 16 * 1024;
   constexpr double httpRateLimitBurst = 180.0;
   constexpr double httpRateLimitRefillPerSecond = 12.0;
   constexpr std::chrono::minutes httpRateLimitIdleTtl{10};
@@ -729,9 +731,18 @@ namespace
     void read()
     {
       req_ = {};
+      auto parser = std::make_shared<http::request_parser<http::string_body>>();
+      parser->body_limit(maxHttpRequestBodyBytes);
+      parser->header_limit(maxHttpRequestHeaderBytes);
       auto self = shared_from_this();
-      http::async_read(socket_, buffer_, req_, [self](beast::error_code ec, std::size_t)
-                       { self->onRead(ec); });
+      http::async_read(socket_, buffer_, *parser, [self, parser](beast::error_code ec, std::size_t)
+                       {
+                         if (!ec)
+                         {
+                           self->req_ = parser->release();
+                         }
+                         self->onRead(ec);
+                       });
     }
 
     void onRead(beast::error_code ec)

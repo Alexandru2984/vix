@@ -173,6 +173,19 @@ Fix:
 - fail persistence startup cleanly when those defensive bounds are exceeded
 - added audit checks for migration bounds
 
+### Bounded HTTP parser input
+
+Severity: medium
+
+The HTTP server only needs small `GET`, `HEAD`, and WebSocket upgrade requests, but the Beast request parser was used without explicit project-level header and body limits. Library defaults reduce risk, but explicit bounds make oversized requests predictable and auditable.
+
+Fix:
+
+- cap HTTP request bodies at 8 KiB before routing
+- cap HTTP request headers at 16 KiB before routing
+- keep oversized or malformed requests out of application handlers
+- added audit checks for parser body and header bounds
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low
@@ -213,6 +226,7 @@ Fix:
 
 - only `GET` and `HEAD` are accepted
 - target URI length is capped
+- parser header and body sizes are capped before request routing
 - dynamic endpoints are rate-limited
 - room query filters are sanitized
 - path traversal probes against `.env` return `400` or `404`
