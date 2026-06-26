@@ -123,6 +123,7 @@ The VPS-side deploy script is `scripts/deploy_vps.sh`. It refuses a dirty worktr
 ## Environment
 
 The app reads `.env` from the project root. Environment variables override `.env` values.
+For startup safety, `.env` is capped at 64 KiB, 512 lines, and 4 KiB per line.
 
 ```bash
 APP_HOST=127.0.0.1

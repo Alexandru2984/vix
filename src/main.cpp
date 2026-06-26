@@ -17,6 +17,7 @@
 #include <mutex>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -40,6 +41,9 @@ namespace
   constexpr std::uint64_t maxHttpRequestBodyBytes = 8 * 1024;
   constexpr std::uint32_t maxHttpRequestHeaderBytes = 16 * 1024;
   constexpr std::uintmax_t maxStaticFileBytes = 2 * 1024 * 1024;
+  constexpr std::uintmax_t maxDotEnvBytes = 64 * 1024;
+  constexpr std::size_t maxDotEnvLines = 512;
+  constexpr std::size_t maxDotEnvLineBytes = 4 * 1024;
   constexpr double httpRateLimitBurst = 180.0;
   constexpr double httpRateLimitRefillPerSecond = 12.0;
   constexpr std::chrono::minutes httpRateLimitIdleTtl{10};
@@ -266,10 +270,23 @@ namespace
   std::unordered_map<std::string, std::string> readDotEnv(const std::filesystem::path &path)
   {
     std::unordered_map<std::string, std::string> values;
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec))
+      return values;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (!ec && size > maxDotEnvBytes)
+      throw std::runtime_error(".env exceeds maximum supported size");
+
     std::ifstream in(path);
     std::string line;
+    std::size_t lineCount = 0;
     while (std::getline(in, line))
     {
+      ++lineCount;
+      if (lineCount > maxDotEnvLines)
+        throw std::runtime_error(".env has too many lines");
+      if (line.size() > maxDotEnvLineBytes)
+        throw std::runtime_error(".env line exceeds maximum supported size");
       line = trim(line);
       if (line.empty() || line.front() == '#')
         continue;
@@ -1010,7 +1027,7 @@ namespace
   };
 }
 
-int main()
+int runServer()
 {
   const std::filesystem::path root = std::filesystem::current_path();
   const auto fileEnv = readDotEnv(root / ".env");
@@ -1044,67 +1061,71 @@ int main()
   config.allowedOrigins.insert("http://127.0.0.1:" + std::to_string(appPort));
   config.allowedOrigins.insert("http://localhost:" + std::to_string(appPort));
 
+  arena::GameServer game(dataDir, databaseUrl, root / "migrations", gameLimits);
+  game.start();
+
+  asio::io_context ioc{static_cast<int>(std::max(2u, std::thread::hardware_concurrency()))};
+  const auto address = asio::ip::make_address(appHost);
+  std::make_shared<Listener>(ioc, tcp::endpoint{address, static_cast<unsigned short>(appPort)}, game, root, config)->run();
+
+  asio::signal_set signals(ioc, SIGINT, SIGTERM);
+  signals.async_wait([&](const beast::error_code &ec, int signal)
+                     {
+                       if (!ec)
+                       {
+                         logJson("info", "shutdown_requested", {{"signal", signal}});
+                         game.stop();
+                         ioc.stop();
+                       }
+                     });
+
+  logJson("info", "server_started", {
+                                       {"host", appHost},
+                                       {"port", appPort},
+                                       {"websocketPath", "/ws"},
+                                       {"publicUrl", publicUrl},
+                                       {"dataDir", dataDir.string()},
+                                       {"postgresConfigured", !databaseUrl.empty()},
+                                       {"allowedOrigins", config.allowedOrigins},
+                                       {"allowMissingOrigin", config.allowMissingOrigin},
+                                       {"maxPlayersPerRoom", gameLimits.maxPlayersPerRoom},
+                                       {"maxActiveRooms", gameLimits.maxActiveRooms},
+                                       {"maxConnectionsPerIp", gameLimits.maxConnectionsPerIp},
+                                       {"wsMessageBurst", gameLimits.wsMessageBurst},
+                                       {"wsMessageRefillPerSecond", gameLimits.wsMessageRefillPerSecond},
+                                       {"benchmarkSourceIps", gameLimits.benchmarkSourceIps.size()},
+                                       {"benchmarkMaxPlayersPerRoom", gameLimits.benchmarkMaxPlayersPerRoom},
+                                       {"benchmarkMaxConnectionsPerIp", gameLimits.benchmarkMaxConnectionsPerIp},
+                                       {"benchmarkWsMessageBurst", gameLimits.benchmarkWsMessageBurst},
+                                       {"benchmarkWsMessageRefillPerSecond", gameLimits.benchmarkWsMessageRefillPerSecond},
+                                       {"httpRateLimitBurst", httpRateBurst},
+                                       {"httpRateLimitRefillPerSecond", httpRateRefillPerSecond},
+                                       {"benchmarkHttpRateLimitBurst", benchmarkHttpRateBurst},
+                                       {"benchmarkHttpRateLimitRefillPerSecond", benchmarkHttpRateRefillPerSecond},
+                                   });
+
+  std::vector<std::thread> threads;
+  const unsigned count = std::max(1u, std::thread::hardware_concurrency());
+  threads.reserve(count);
+  for (unsigned i = 0; i < count; ++i)
+    threads.emplace_back([&ioc] { ioc.run(); });
+  for (auto &thread : threads)
+    thread.join();
+
+  game.stop();
+  logJson("info", "server_stopped");
+  return 0;
+}
+
+int main()
+{
   try
   {
-    arena::GameServer game(dataDir, databaseUrl, root / "migrations", gameLimits);
-    game.start();
-
-    asio::io_context ioc{static_cast<int>(std::max(2u, std::thread::hardware_concurrency()))};
-    const auto address = asio::ip::make_address(appHost);
-    std::make_shared<Listener>(ioc, tcp::endpoint{address, static_cast<unsigned short>(appPort)}, game, root, config)->run();
-
-    asio::signal_set signals(ioc, SIGINT, SIGTERM);
-    signals.async_wait([&](const beast::error_code &ec, int signal)
-                       {
-                         if (!ec)
-                         {
-                           logJson("info", "shutdown_requested", {{"signal", signal}});
-                           game.stop();
-                           ioc.stop();
-                         }
-                       });
-
-    logJson("info", "server_started", {
-                                         {"host", appHost},
-                                         {"port", appPort},
-                                         {"websocketPath", "/ws"},
-                                         {"publicUrl", publicUrl},
-                                         {"dataDir", dataDir.string()},
-                                         {"postgresConfigured", !databaseUrl.empty()},
-                                         {"allowedOrigins", config.allowedOrigins},
-                                         {"allowMissingOrigin", config.allowMissingOrigin},
-                                         {"maxPlayersPerRoom", gameLimits.maxPlayersPerRoom},
-                                         {"maxActiveRooms", gameLimits.maxActiveRooms},
-                                         {"maxConnectionsPerIp", gameLimits.maxConnectionsPerIp},
-                                         {"wsMessageBurst", gameLimits.wsMessageBurst},
-                                         {"wsMessageRefillPerSecond", gameLimits.wsMessageRefillPerSecond},
-                                         {"benchmarkSourceIps", gameLimits.benchmarkSourceIps.size()},
-                                         {"benchmarkMaxPlayersPerRoom", gameLimits.benchmarkMaxPlayersPerRoom},
-                                         {"benchmarkMaxConnectionsPerIp", gameLimits.benchmarkMaxConnectionsPerIp},
-                                         {"benchmarkWsMessageBurst", gameLimits.benchmarkWsMessageBurst},
-                                         {"benchmarkWsMessageRefillPerSecond", gameLimits.benchmarkWsMessageRefillPerSecond},
-                                         {"httpRateLimitBurst", httpRateBurst},
-                                         {"httpRateLimitRefillPerSecond", httpRateRefillPerSecond},
-                                         {"benchmarkHttpRateLimitBurst", benchmarkHttpRateBurst},
-                                         {"benchmarkHttpRateLimitRefillPerSecond", benchmarkHttpRateRefillPerSecond},
-                                     });
-
-    std::vector<std::thread> threads;
-    const unsigned count = std::max(1u, std::thread::hardware_concurrency());
-    threads.reserve(count);
-    for (unsigned i = 0; i < count; ++i)
-      threads.emplace_back([&ioc] { ioc.run(); });
-    for (auto &thread : threads)
-      thread.join();
-
-    game.stop();
-    logJson("info", "server_stopped");
+    return runServer();
   }
   catch (const std::exception &e)
   {
     std::cerr << nlohmann::json({{"level", "fatal"}, {"event", "startup_failed"}, {"timestamp", arena::isoTimestampUtc()}, {"error", e.what()}}).dump() << '\n';
     return 1;
   }
-
-  return 0;
 }

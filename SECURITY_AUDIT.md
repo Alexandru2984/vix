@@ -198,6 +198,19 @@ Fix:
 - return `413 Payload Too Large` before reading oversized assets into memory
 - added an audit check for the static file size guard
 
+### Bounded `.env` parsing
+
+Severity: low
+
+The `.env` file is local operator configuration, but the startup parser accepted unbounded file and line sizes. A bad local artifact could make startup parse more data than intended before falling back to runtime defaults or environment overrides.
+
+Fix:
+
+- cap `.env` files at 64 KiB
+- cap `.env` parsing at 512 lines and 4 KiB per line
+- fail startup clearly for oversized `.env` input
+- added audit checks for `.env` parser bounds
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low
