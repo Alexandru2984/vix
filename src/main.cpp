@@ -472,7 +472,10 @@ namespace
     {
       value.resize(96);
     }
-    return value;
+
+    beast::error_code ec;
+    const auto address = asio::ip::make_address(value, ec);
+    return ec ? std::string{} : address.to_string();
   }
 
   template <class Body, class Allocator>

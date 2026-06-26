@@ -62,6 +62,7 @@ require_text 'ReadWritePaths=/home/micu/vix/data' systemd/vix-arena.service.exam
 require_text 'CapabilityBoundingSet=' systemd/vix-arena.service.example
 require_text 'SystemCallFilter=@system-service' systemd/vix-arena.service.example
 require_text 'pathInside' src/main.cpp
+require_text 'make_address\(value' src/main.cpp
 require_text 'FROM debian:bookworm-slim AS build' Dockerfile
 require_text 'FROM debian:bookworm-slim AS runtime' Dockerfile
 require_text 'COPY --from=build /app/build/vix-arena' Dockerfile

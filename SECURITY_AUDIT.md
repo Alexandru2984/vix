@@ -147,6 +147,19 @@ Fix:
 - changed CSP to `style-src 'self'`
 - added audit checks that reject `<style>` blocks in HTML pages and `'unsafe-inline'` in CSP
 
+### Validated forwarded client IP headers
+
+Severity: medium
+
+The app trusted forwarded client IP headers from loopback reverse-proxy connections, but accepted any non-empty string as the client key. If a proxy passed through a user-controlled forwarded header, an attacker could rotate arbitrary values and bypass per-client HTTP/WebSocket rate limiting.
+
+Fix:
+
+- parse forwarded header values as IP literals before trusting them
+- ignore malformed forwarded values instead of using them as rate-limit keys
+- normalize accepted forwarded addresses through Boost.Asio address parsing
+- added an audit check for forwarded-address validation
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low
