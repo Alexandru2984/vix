@@ -186,6 +186,18 @@ Fix:
 - keep oversized or malformed requests out of application handlers
 - added audit checks for parser body and header bounds
 
+### Bounded static file responses
+
+Severity: low
+
+Static assets are repo-controlled and currently small, but the file server read matching files fully into memory before responding. A bad artifact or accidental large file under `public/` could make static requests consume unnecessary memory.
+
+Fix:
+
+- cap static file reads at 2 MiB
+- return `413 Payload Too Large` before reading oversized assets into memory
+- added an audit check for the static file size guard
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low
@@ -227,6 +239,7 @@ Fix:
 - only `GET` and `HEAD` are accepted
 - target URI length is capped
 - parser header and body sizes are capped before request routing
+- static file response size is capped before file reads
 - dynamic endpoints are rate-limited
 - room query filters are sanitized
 - path traversal probes against `.env` return `400` or `404`

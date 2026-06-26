@@ -39,6 +39,7 @@ namespace
   constexpr std::size_t maxWsOutboxBytes = 1024 * 1024;
   constexpr std::uint64_t maxHttpRequestBodyBytes = 8 * 1024;
   constexpr std::uint32_t maxHttpRequestHeaderBytes = 16 * 1024;
+  constexpr std::uintmax_t maxStaticFileBytes = 2 * 1024 * 1024;
   constexpr double httpRateLimitBurst = 180.0;
   constexpr double httpRateLimitRefillPerSecond = 12.0;
   constexpr std::chrono::minutes httpRateLimitIdleTtl{10};
@@ -912,6 +913,17 @@ namespace
       if (!pathInside(publicRoot, path))
       {
         res = makeResponse(req_, http::status::bad_request, "bad request", "text/plain; charset=utf-8");
+        return;
+      }
+      const auto size = std::filesystem::file_size(path, ec);
+      if (ec)
+      {
+        res = makeResponse(req_, http::status::not_found, "not found", "text/plain; charset=utf-8");
+        return;
+      }
+      if (size > maxStaticFileBytes)
+      {
+        res = makeResponse(req_, http::status::payload_too_large, "payload too large", "text/plain; charset=utf-8");
         return;
       }
 
