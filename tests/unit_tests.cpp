@@ -500,6 +500,40 @@ namespace
 
     std::filesystem::remove_all(dir);
   }
+
+  void gameServerBoundsPersistentState()
+  {
+    const auto oversizedDir = std::filesystem::temp_directory_path() / ("vix-arena-oversized-state-" + std::to_string(arena::unixTimeMs()));
+    std::filesystem::create_directories(oversizedDir);
+    {
+      std::ofstream out(oversizedDir / "vix-arena-state.json", std::ios::binary);
+      out << std::string(2 * 1024 * 1024, ' ');
+    }
+
+    arena::GameServer oversizedServer(oversizedDir);
+    requireEq(oversizedServer.leaderboardJson().at("entries").size(), std::size_t{0}, "oversized persistent state should be ignored");
+    std::filesystem::remove_all(oversizedDir);
+
+    const auto cappedDir = std::filesystem::temp_directory_path() / ("vix-arena-capped-state-" + std::to_string(arena::unixTimeMs()));
+    std::filesystem::create_directories(cappedDir);
+    {
+      std::ofstream out(cappedDir / "vix-arena-state.json");
+      out << R"({"schemaVersion":1,"leaderboard":[)";
+      for (int i = 0; i < 650; ++i)
+      {
+        if (i > 0)
+        {
+          out << ',';
+        }
+        out << R"({"name":"Player )" << i << R"(","rounds":1,"wins":0,"totalScore":)" << i << R"(,"bestScore":)" << i << R"(,"lastPlayedAt":"2026-05-17T10:00:00Z"})";
+      }
+      out << R"(],"matches":[]})";
+    }
+
+    arena::GameServer cappedServer(cappedDir);
+    requireEq(cappedServer.statsJson().at("persistence").value("leaderboardEntries", 0), 500, "persistent leaderboard should be capped");
+    std::filesystem::remove_all(cappedDir);
+  }
 }
 
 int main()
@@ -518,6 +552,7 @@ int main()
     run("game server isolates rooms", gameServerIsolatesRooms);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
+    run("game server bounds persistent state", gameServerBoundsPersistentState);
   }
   catch (const std::exception &)
   {

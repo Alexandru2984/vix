@@ -1312,6 +1312,19 @@ namespace arena
 
     try
     {
+      std::error_code sizeEc;
+      const auto stateSize = std::filesystem::file_size(stateFile_, sizeEc);
+      if (sizeEc)
+      {
+        std::cerr << "failed to inspect persistent state file " << stateFile_ << ": " << sizeEc.message() << '\n';
+        return;
+      }
+      if (stateSize > maxPersistentStateBytes_)
+      {
+        std::cerr << "ignoring oversized persistent state file: " << stateFile_ << '\n';
+        return;
+      }
+
       std::ifstream in(stateFile_);
       if (!in)
       {
@@ -1350,6 +1363,10 @@ namespace arena
             entry.lastPlayedAt = item.at("lastPlayedAt").get<std::string>();
           }
           leaderboard_[entry.name] = std::move(entry);
+          if (leaderboard_.size() >= maxPersistentLeaderboardEntries_)
+          {
+            break;
+          }
         }
       }
 
@@ -1391,7 +1408,7 @@ namespace arena
           {"schemaVersion", 1},
           {"service", "vix-arena"},
           {"updatedAt", isoTimestampUtc()},
-          {"leaderboard", leaderboardJsonLocked(leaderboard_.size()).at("entries")},
+          {"leaderboard", leaderboardJsonLocked(maxPersistentLeaderboardEntries_).at("entries")},
           {"matches", matchesJsonLocked(matchHistoryLimit_).at("matches")}};
 
       {
@@ -1473,6 +1490,7 @@ namespace arena
         entry.lastPlayedAt = endedAt;
       }
     }
+    pruneLeaderboardLocked();
 
     std::sort(participants.begin(), participants.end(), [](const nlohmann::json &left, const nlohmann::json &right)
               {
@@ -1502,6 +1520,39 @@ namespace arena
     if (persistence_ && persistence_->enabled())
     {
       persistence_->enqueueMatch(dbRecord);
+    }
+  }
+
+  void GameServer::pruneLeaderboardLocked()
+  {
+    if (leaderboard_.size() <= maxPersistentLeaderboardEntries_)
+    {
+      return;
+    }
+
+    std::vector<LeaderboardEntry> entries;
+    entries.reserve(leaderboard_.size());
+    for (const auto &[_, entry] : leaderboard_)
+    {
+      entries.push_back(entry);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const LeaderboardEntry &left, const LeaderboardEntry &right)
+              {
+                if (left.wins != right.wins)
+                  return left.wins > right.wins;
+                if (left.bestScore != right.bestScore)
+                  return left.bestScore > right.bestScore;
+                if (left.totalScore != right.totalScore)
+                  return left.totalScore > right.totalScore;
+                return left.name < right.name;
+              });
+
+    leaderboard_.clear();
+    const std::size_t keep = std::min(maxPersistentLeaderboardEntries_, entries.size());
+    for (std::size_t i = 0; i < keep; ++i)
+    {
+      leaderboard_[entries[i].name] = std::move(entries[i]);
     }
   }
 

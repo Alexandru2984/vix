@@ -110,6 +110,19 @@ Fix:
 - excluded local data, `node_modules`, Playwright results, test results, and benchmark results from the Docker context
 - added audit checks for sensitive Docker context excludes
 
+### Bounded JSON fallback persistence
+
+Severity: medium
+
+The JSON fallback state file was parsed without a size check, and the fallback leaderboard could grow with every unique display name. A corrupted or oversized local state file could make startup expensive, and long-running public abuse could grow JSON persistence unnecessarily.
+
+Fix:
+
+- ignore fallback state files larger than 1 MiB
+- cap loaded and saved fallback leaderboard entries at 500
+- prune the in-memory fallback leaderboard after round recording
+- added unit coverage for oversized state and leaderboard caps
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

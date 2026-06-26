@@ -185,6 +185,7 @@ namespace arena
     void loadPersistentStateLocked();
     void savePersistentStateLocked() const;
     void recordRoundLocked(RoomState &room, const std::string &roomCode);
+    void pruneLeaderboardLocked();
     [[nodiscard]] MatchRecord matchRecordLocked(const RoomState &room, const std::string &endedAt, const std::string &roomCode) const;
     [[nodiscard]] nlohmann::json leaderboardJsonLocked(std::size_t limit = 10, const std::string &roomCode = {}) const;
     [[nodiscard]] nlohmann::json matchesJsonLocked(std::size_t limit = 20, const std::string &roomCode = {}) const;
@@ -289,6 +290,8 @@ namespace arena
     static constexpr int intermissionSeconds_{10};
     static constexpr std::size_t tickDurationSampleLimit_{512};
     static constexpr std::size_t matchHistoryLimit_{50};
+    static constexpr std::uintmax_t maxPersistentStateBytes_{1024 * 1024};
+    static constexpr std::size_t maxPersistentLeaderboardEntries_{500};
 
     std::atomic<std::uint64_t> totalMessagesReceived_{0};
     std::atomic<std::uint64_t> totalMessageBytesReceived_{0};
