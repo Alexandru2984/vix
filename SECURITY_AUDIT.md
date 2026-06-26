@@ -160,6 +160,19 @@ Fix:
 - normalize accepted forwarded addresses through Boost.Asio address parsing
 - added an audit check for forwarded-address validation
 
+### Bounded PostgreSQL migration reads
+
+Severity: low
+
+PostgreSQL migrations are local repo files, but the migration runner read each SQL file fully into memory without a size cap. A bad deployment artifact or accidental large file under `migrations/` could make startup unexpectedly expensive.
+
+Fix:
+
+- cap each migration file at 256 KiB
+- cap migration discovery at 128 files
+- fail persistence startup cleanly when those defensive bounds are exceeded
+- added audit checks for migration bounds
+
 ### Removed frontend `innerHTML` usage
 
 Severity: low

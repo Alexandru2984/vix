@@ -17,6 +17,8 @@ namespace arena
   namespace
   {
     constexpr std::size_t maxQueuedMatches = 128;
+    constexpr std::size_t maxMigrationFiles = 128;
+    constexpr std::uintmax_t maxMigrationFileBytes = 256 * 1024;
 
     std::string limitString(std::size_t limit, std::size_t fallback)
     {
@@ -26,6 +28,17 @@ namespace arena
 
     std::string readTextFile(const std::filesystem::path &path)
     {
+      std::error_code ec;
+      const auto size = std::filesystem::file_size(path, ec);
+      if (ec)
+      {
+        throw std::runtime_error("failed to inspect migration file: " + path.string());
+      }
+      if (size > maxMigrationFileBytes)
+      {
+        throw std::runtime_error("migration file is too large: " + path.string());
+      }
+
       std::ifstream in(path, std::ios::binary);
       if (!in)
       {
@@ -307,6 +320,10 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
           continue;
         }
         migrations.emplace(version, entry.path());
+        if (migrations.size() > maxMigrationFiles)
+        {
+          throw std::runtime_error("too many migration files");
+        }
       }
     }
 
