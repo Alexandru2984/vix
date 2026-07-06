@@ -133,6 +133,16 @@ If a delta would be larger than the full snapshot, the server sends a full snaps
 
 If a client receives a `snapshot_delta` whose `baseSnapshotId` does not match the last snapshot it applied, it must discard the delta and send `{"type":"resync"}`. The server responds with a fresh full `snapshot` and resets that client's delta baseline. Clients should rate limit resync requests (the reference client allows one per 1.5 seconds).
 
+## Server Shutdown
+
+When the server stops (planned restart), it broadcasts a final notice to every connected client before closing the sockets:
+
+```json
+{"type":"server_shutdown","protocolVersion":2,"serverTimeMs":1779035000000,"message":"Server is restarting - reconnecting shortly"}
+```
+
+Clients should surface the `message` (the reference client shows a banner) and keep their normal reconnect/backoff behaviour; the socket close follows immediately.
+
 ## Compatibility Rules
 
 - Unknown fields must be ignored by clients.

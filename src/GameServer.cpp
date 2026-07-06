@@ -195,6 +195,13 @@ namespace arena
     {
       tickThread_.join();
     }
+    // The tick thread has joined, so no snapshot broadcast can race this.
+    // Tell connected clients the server is going away so they can show a
+    // banner instead of silently churning through reconnect attempts.
+    broadcast({{"type", "server_shutdown"},
+               {"protocolVersion", protocolVersion},
+               {"serverTimeMs", unixTimeMs()},
+               {"message", "Server is restarting - reconnecting shortly"}});
   }
 
   bool GameServer::onOpen(const std::shared_ptr<ClientConnection> &session)

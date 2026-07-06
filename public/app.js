@@ -465,6 +465,12 @@
       if (typeof msg.t === "number") {
         pingEl.textContent = String(Math.max(0, Date.now() - msg.t));
       }
+    } else if (msg.type === "server_shutdown") {
+      const text = msg.message || "Server is restarting - reconnecting shortly";
+      appendSystem(text);
+      roundBanner.textContent = text;
+      roundBanner.classList.remove("hidden");
+      setStatus("restarting", false);
     } else if (msg.type === "error") {
       appendSystem(msg.message || "Server rejected a message");
       if (!state.joined && state.pendingJoin) {
@@ -944,15 +950,64 @@
     updateChatBadge();
   }
 
+  const MUTE_KEY = "vix.muted";
+  const mutedNames = loadMutedNames();
+  const CHAT_LOG_LIMIT = 150;
+
+  function loadMutedNames() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(MUTE_KEY) || "[]");
+      return new Set(Array.isArray(raw) ? raw.filter((n) => typeof n === "string") : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveMutedNames() {
+    try {
+      localStorage.setItem(MUTE_KEY, JSON.stringify([...mutedNames]));
+    } catch {
+      // localStorage may be unavailable (private mode); muting stays in-memory.
+    }
+  }
+
+  function isMuted(name) {
+    return mutedNames.has(String(name).toLowerCase());
+  }
+
+  function toggleMute(name) {
+    if (!name) return;
+    const key = String(name).toLowerCase();
+    if (mutedNames.has(key)) {
+      mutedNames.delete(key);
+      appendSystem(`Unmuted ${name}`);
+    } else {
+      mutedNames.add(key);
+      appendSystem(`Muted ${name} - click their name to unmute`);
+    }
+    saveMutedNames();
+  }
+
+  function trimChatLog() {
+    while (chatLog.childElementCount > CHAT_LOG_LIMIT) {
+      chatLog.removeChild(chatLog.firstElementChild);
+    }
+  }
+
   function appendChat(from, message, notify = true) {
+    if (isMuted(from)) return;
     const line = document.createElement("div");
     line.className = "chat-line";
     const name = document.createElement("b");
     name.textContent = from;
+    name.className = "chat-name";
+    name.dataset.chatFrom = from;
+    name.title = "Click to mute/unmute";
     const text = document.createElement("span");
     text.textContent = `: ${message}`;
     line.append(name, text);
     chatLog.append(line);
+    trimChatLog();
     chatLog.scrollTop = chatLog.scrollHeight;
     if (notify && isMobileLayout() && !document.body.classList.contains("show-chat")) {
       state.chatUnread += 1;
@@ -965,6 +1020,7 @@
     line.className = "chat-line";
     line.textContent = message;
     chatLog.append(line);
+    trimChatLog();
     chatLog.scrollTop = chatLog.scrollHeight;
   }
 
@@ -1127,6 +1183,14 @@
     if (keyMap(event.key, false)) {
       event.preventDefault();
       sendInput();
+    }
+  });
+
+  chatLog.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target.closest("[data-chat-from]") : null;
+    if (target) {
+      haptic(6);
+      toggleMute(target.dataset.chatFrom);
     }
   });
 

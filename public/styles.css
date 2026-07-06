@@ -985,6 +985,14 @@ td {
   color: var(--accent);
 }
 
+.chat-name {
+  cursor: pointer;
+}
+
+.chat-name:hover {
+  text-decoration: underline;
+}
+
 #chatInput {
   background: var(--panel-strong);
 }

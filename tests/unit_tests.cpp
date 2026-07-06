@@ -579,6 +579,22 @@ namespace
     requireEq(server.statsJson("watch-room").value("spectators", 0), 0, "spectator disconnect should free the slot");
   }
 
+  void gameServerBroadcastsShutdown()
+  {
+    arena::GameServer server;
+    CapturedClient client;
+    require(server.onOpen(client.connection), "shutdown test client should open");
+    server.onMessage(client.connection.get(), R"({"type":"join","name":"Leaver"})");
+    require(client.sawType("welcome"), "shutdown test client should join");
+
+    server.start();
+    server.stop();
+
+    const auto *shutdown = client.firstType("server_shutdown");
+    require(shutdown != nullptr, "stop() should broadcast a server_shutdown notice");
+    require(!shutdown->value("message", "").empty(), "shutdown notice should carry a message");
+  }
+
   void gameServerLoadsPersistentLeaderboard()
   {
     const auto dir = std::filesystem::temp_directory_path() / ("vix-arena-test-" + std::to_string(arena::unixTimeMs()));
@@ -681,6 +697,7 @@ int main()
     run("game server resumes detached players", gameServerResumesDetachedPlayers);
     run("game server resends full snapshot on resync", gameServerResendsFullSnapshotOnResync);
     run("game server supports spectators", gameServerSupportsSpectators);
+    run("game server broadcasts shutdown", gameServerBroadcastsShutdown);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
     run("game server bounds persistent state", gameServerBoundsPersistentState);
   }
