@@ -53,6 +53,7 @@ namespace
   {
     std::set<std::string> allowedOrigins;
     bool allowMissingOrigin{false};
+    bool wsCompression{true};
   };
 
   struct HttpRateLimitBucket
@@ -580,11 +581,18 @@ namespace
   class WebSocketSession : public std::enable_shared_from_this<WebSocketSession>
   {
   public:
-    WebSocketSession(tcp::socket socket, arena::GameServer &game)
+    WebSocketSession(tcp::socket socket, arena::GameServer &game, bool enableCompression)
         : ws_(std::move(socket)),
           game_(game),
           client_(std::make_shared<arena::ClientConnection>())
     {
+      if (enableCompression)
+      {
+        websocket::permessage_deflate pmd;
+        pmd.server_enable = true;
+        pmd.compLevel = 3;
+        ws_.set_option(pmd);
+      }
       beast::error_code ec;
       const auto endpoint = ws_.next_layer().remote_endpoint(ec);
       if (!ec)
@@ -805,7 +813,7 @@ namespace
           return;
         }
         stream_.expires_never();
-        std::make_shared<WebSocketSession>(stream_.release_socket(), game_)->run(std::move(req_));
+        std::make_shared<WebSocketSession>(stream_.release_socket(), game_, config_.wsCompression)->run(std::move(req_));
         return;
       }
 
@@ -1085,6 +1093,7 @@ int runServer()
   gHttpRateLimiter.configure(httpRateBurst, httpRateRefillPerSecond, gameLimits.benchmarkSourceIps, benchmarkHttpRateBurst, benchmarkHttpRateRefillPerSecond);
   AppConfig config;
   config.allowMissingOrigin = envBool(fileEnv, "ALLOW_MISSING_ORIGIN", false);
+  config.wsCompression = envBool(fileEnv, "WS_COMPRESSION", true);
   config.allowedOrigins = parseOriginList(envString(fileEnv, "ALLOWED_ORIGINS", ""));
   if (const std::string publicOrigin = originFromUrl(publicUrl); !publicOrigin.empty())
     config.allowedOrigins.insert(publicOrigin);
@@ -1118,6 +1127,7 @@ int runServer()
                                        {"postgresConfigured", !databaseUrl.empty()},
                                        {"allowedOrigins", config.allowedOrigins},
                                        {"allowMissingOrigin", config.allowMissingOrigin},
+                                       {"wsCompression", config.wsCompression},
                                        {"maxPlayersPerRoom", gameLimits.maxPlayersPerRoom},
                                        {"maxActiveRooms", gameLimits.maxActiveRooms},
                                        {"maxConnectionsPerIp", gameLimits.maxConnectionsPerIp},
