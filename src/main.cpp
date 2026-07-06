@@ -44,6 +44,7 @@ namespace
   constexpr std::uintmax_t maxDotEnvBytes = 64 * 1024;
   constexpr std::size_t maxDotEnvLines = 512;
   constexpr std::size_t maxDotEnvLineBytes = 4 * 1024;
+  constexpr std::chrono::seconds httpSessionTimeout{30};
   constexpr double httpRateLimitBurst = 180.0;
   constexpr double httpRateLimitRefillPerSecond = 12.0;
   constexpr std::chrono::minutes httpRateLimitIdleTtl{10};
@@ -736,7 +737,7 @@ namespace
   {
   public:
     HttpSession(tcp::socket socket, arena::GameServer &game, std::filesystem::path root, const AppConfig &config)
-        : socket_(std::move(socket)), game_(game), root_(std::move(root)), config_(config)
+        : stream_(std::move(socket)), game_(game), root_(std::move(root)), config_(config)
     {
     }
 
@@ -753,7 +754,8 @@ namespace
       parser->body_limit(maxHttpRequestBodyBytes);
       parser->header_limit(maxHttpRequestHeaderBytes);
       auto self = shared_from_this();
-      http::async_read(socket_, buffer_, *parser, [self, parser](beast::error_code ec, std::size_t)
+      stream_.expires_after(httpSessionTimeout);
+      http::async_read(stream_, buffer_, *parser, [self, parser](beast::error_code ec, std::size_t)
                        {
                          if (!ec)
                          {
@@ -782,7 +784,8 @@ namespace
           writeResponse(std::move(res));
           return;
         }
-        std::make_shared<WebSocketSession>(std::move(socket_), game_)->run(std::move(req_));
+        stream_.expires_never();
+        std::make_shared<WebSocketSession>(stream_.release_socket(), game_)->run(std::move(req_));
         return;
       }
 
@@ -812,7 +815,7 @@ namespace
       {
         ++gHttpDynamicRequestsTotal;
         beast::error_code endpointEc;
-        const auto endpoint = socket_.remote_endpoint(endpointEc);
+        const auto endpoint = stream_.socket().remote_endpoint(endpointEc);
         const bool trustForwardedHeaders = !endpointEc && endpoint.address().is_loopback();
         std::string clientAddress = forwardedClientAddress(req_, trustForwardedHeaders);
         if (clientAddress.empty() && !endpointEc)
@@ -879,17 +882,18 @@ namespace
     void writeResponse(http::response<http::string_body> res)
     {
       auto self = shared_from_this();
+      stream_.expires_after(httpSessionTimeout);
       if (req_.method() == http::verb::head)
       {
         auto sp = std::make_shared<http::response<http::empty_body>>();
         sp->base() = res.base();
         sp->content_length(res.body().size());
-        http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
+        http::async_write(stream_, *sp, [self, sp](beast::error_code ec, std::size_t)
                           { self->onWrite(ec, sp->need_eof()); });
         return;
       }
       auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
-      http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
+      http::async_write(stream_, *sp, [self, sp](beast::error_code ec, std::size_t)
                         { self->onWrite(ec, sp->need_eof()); });
     }
 
@@ -972,10 +976,10 @@ namespace
     void close()
     {
       beast::error_code ec;
-      socket_.shutdown(tcp::socket::shutdown_send, ec);
+      stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
     }
 
-    tcp::socket socket_;
+    beast::tcp_stream stream_;
     beast::flat_buffer buffer_;
     arena::GameServer &game_;
     std::filesystem::path root_;
