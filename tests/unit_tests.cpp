@@ -476,6 +476,22 @@ namespace
     require(metrics.find("vix_arena_ws_snapshot_deltas_sent_total") != std::string::npos, "metrics should expose snapshot deltas");
   }
 
+  void gameServerResendsFullSnapshotOnResync()
+  {
+    arena::GameServer server;
+    CapturedClient client;
+    require(server.onOpen(client.connection), "resync client should open");
+    server.onMessage(client.connection.get(), R"({"type":"join","name":"Resync","protocolVersion":2,"supports":["snapshot_delta"]})");
+    require(client.sawType("snapshot"), "join should send initial snapshot");
+    const auto joinSnapshotId = client.firstType("snapshot")->value("snapshotId", 0ULL);
+
+    server.onMessage(client.connection.get(), R"({"type":"resync"})");
+    const auto &resynced = client.messages.back();
+    requireEq(resynced.value("type", ""), std::string("snapshot"), "resync should send a full snapshot");
+    require(resynced.value("full", false), "resync snapshot should be full");
+    require(resynced.value("snapshotId", 0ULL) > joinSnapshotId, "resync snapshot should advance the snapshot id");
+  }
+
   void gameServerLoadsPersistentLeaderboard()
   {
     const auto dir = std::filesystem::temp_directory_path() / ("vix-arena-test-" + std::to_string(arena::unixTimeMs()));
@@ -575,6 +591,7 @@ int main()
     run("game server isolates rooms", gameServerIsolatesRooms);
     run("game server closes stale sessions and prunes rooms", gameServerClosesStaleSessionsAndPrunesRooms);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
+    run("game server resends full snapshot on resync", gameServerResendsFullSnapshotOnResync);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
     run("game server bounds persistent state", gameServerBoundsPersistentState);
   }

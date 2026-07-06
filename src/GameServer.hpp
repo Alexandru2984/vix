@@ -157,6 +157,7 @@ namespace arena
     void handleChat(ClientConnection *session, const nlohmann::json &message);
     void handlePing(ClientConnection *session, const nlohmann::json &message);
     void handleAbility(ClientConnection *session, const nlohmann::json &message);
+    void handleResync(ClientConnection *session);
     [[nodiscard]] bool consumeMessageToken(ClientConnection *session);
     [[nodiscard]] bool recordInvalidMessage(ClientConnection *session);
     void closeSession(ClientConnection *session, const std::string &reason);

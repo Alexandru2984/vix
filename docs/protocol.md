@@ -44,6 +44,7 @@ The server answers with:
 {"type":"ability","ability":"magnet"}
 {"type":"chat","message":"salut"}
 {"type":"ping","t":1710000000000}
+{"type":"resync"}
 ```
 
 `seq` is client-owned and echoed as `inputSeq` in player snapshots. That gives clients a stable reconciliation anchor without trusting client-side movement.
@@ -103,6 +104,10 @@ Clients that negotiated `snapshot_delta` receive deltas after their first full s
 Delta arrays contain full replacement objects for changed or new entities. Removed arrays contain entity IDs. `round` and `controlZone` are included only when changed. Hazards are server-authored danger zones; clients should render them but never decide score damage locally.
 
 If a delta would be larger than the full snapshot, the server sends a full snapshot instead and resets that client's baseline.
+
+## Resync
+
+If a client receives a `snapshot_delta` whose `baseSnapshotId` does not match the last snapshot it applied, it must discard the delta and send `{"type":"resync"}`. The server responds with a fresh full `snapshot` and resets that client's delta baseline. Clients should rate limit resync requests (the reference client allows one per 1.5 seconds).
 
 ## Compatibility Rules
 

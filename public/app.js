@@ -523,9 +523,17 @@
     return Array.from(byId.values());
   }
 
+  function requestResync() {
+    const now = performance.now();
+    if (state.lastResyncRequestAt && now - state.lastResyncRequestAt < 1500) return;
+    state.lastResyncRequestAt = now;
+    send({ type: "resync" });
+    appendSystem("Snapshot resync requested");
+  }
+
   function applySnapshotDelta(msg) {
     if (typeof msg.baseSnapshotId === "number" && state.lastSnapshotId && msg.baseSnapshotId !== state.lastSnapshotId) {
-      appendSystem("Snapshot resync requested");
+      requestResync();
       return;
     }
 

@@ -342,6 +342,10 @@ namespace arena
     {
       handleAbility(session, message);
     }
+    else if (type == "resync")
+    {
+      handleResync(session);
+    }
     else
     {
       send(session, errorMessage("unknown message type"));
@@ -782,6 +786,32 @@ namespace arena
     {
       broadcastRoom(outgoing.value("room", "public"), outgoing);
     }
+  }
+
+  void GameServer::handleResync(ClientConnection *session)
+  {
+    nlohmann::json snapshot;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto sit = sessionToPlayer_.find(session);
+      if (sit == sessionToPlayer_.end())
+      {
+        return;
+      }
+      auto pit = players_.find(sit->second);
+      if (pit == players_.end())
+      {
+        return;
+      }
+      pit->second.lastSeen = std::chrono::steady_clock::now();
+      snapshot = snapshotLocked(currentTick_, nextSnapshotId_++, pit->second.roomCode);
+      if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
+      {
+        state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
+        state->second.lastSnapshot = snapshot;
+      }
+    }
+    send(session, snapshot);
   }
 
   void GameServer::tickLoop()
