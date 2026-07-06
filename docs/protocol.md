@@ -45,10 +45,23 @@ The server answers with:
 
 If the token matches a detached player in that room, the server reattaches the session and answers with the original player `id`, the same `resumeToken`, and `"resumed": true`. Otherwise the join proceeds as a fresh player with a new token. Tokens are bearer secrets scoped to one player slot; clients should store them locally and never share them.
 
+## Spectators
+
+A client may join a room as a spectator by setting `"spectate": true` in `join`:
+
+```json
+{"type":"join","name":"Watcher","room":"public","spectate":true}
+```
+
+The server answers with a `welcome` carrying `"spectator": true` and **no** `id` or `resumeToken`. Spectators receive the same full/delta snapshots and room broadcasts (chat, events, join/leave) as players, but they are not part of the simulation: their `input`, `ability`, and `chat` messages are ignored, and they never appear in snapshots. Spectator slots are capped per room by the same `maxPlayersPerRoom` limit; a full room answers with `error` `"too many spectators"`.
+
+A spectator promotes itself to a real player by sending an ordinary `join` (without `spectate`) on the same connection; the server drops the spectator record and spawns a player. Spectator counts are exposed as `spectators` in `/api/stats` and `activeSpectators` in the websocket stats block.
+
 ## Client Messages
 
 ```json
 {"type":"join","name":"Micu","protocolVersion":2,"supports":["snapshot_delta"]}
+{"type":"join","name":"Watcher","room":"public","spectate":true}
 {"type":"input","up":true,"down":false,"left":false,"right":true,"seq":123}
 {"type":"ability","ability":"dash"}
 {"type":"ability","ability":"shield"}

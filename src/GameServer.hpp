@@ -171,6 +171,7 @@ namespace arena
     [[nodiscard]] Player spawnBotLocked(std::chrono::steady_clock::time_point now, const std::string &roomCode);
     void chooseBotTargetLocked(Player &bot, std::chrono::steady_clock::time_point now);
     [[nodiscard]] std::size_t humanCountLocked() const;
+    [[nodiscard]] std::size_t spectatorCountLocked(const std::string &roomCode) const;
     [[nodiscard]] std::size_t botCountLocked() const;
     [[nodiscard]] std::size_t humanCountLocked(const std::string &roomCode) const;
     [[nodiscard]] std::size_t botCountLocked(const std::string &roomCode) const;
@@ -234,6 +235,7 @@ namespace arena
     World world_;
     std::unordered_map<std::string, Player> players_;
     std::unordered_map<ClientConnection *, std::string> sessionToPlayer_;
+    std::unordered_map<ClientConnection *, std::weak_ptr<ClientConnection>> spectators_;
     std::unordered_map<ClientConnection *, ClientProtocolState> sessionProtocol_;
     std::unordered_map<ClientConnection *, SessionAbuseState> sessionAbuse_;
     std::unordered_map<std::string, std::size_t> connectionsByIp_;

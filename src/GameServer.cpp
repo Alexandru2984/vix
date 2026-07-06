@@ -250,6 +250,12 @@ namespace arena
       }
       if (it == sessionToPlayer_.end())
       {
+        // Spectators have no player record; drop their bookkeeping so they
+        // stop receiving snapshots and free the room's spectator slot.
+        if (spectators_.erase(session) > 0)
+        {
+          sessionProtocol_.erase(session);
+        }
         return;
       }
       else
@@ -483,6 +489,7 @@ namespace arena
         resumeToken.clear();
       }
     }
+    const bool spectate = jsonBool(message, "spectate");
 
     std::vector<nlohmann::json> history;
     nlohmann::json welcome;
@@ -530,6 +537,41 @@ namespace arena
           protocolState.supportsSnapshotDelta = protocolState.version >= protocolVersion &&
                                                 jsonArrayContainsString(message["supports"], protocolFeatureSnapshotDelta);
         }
+
+        if (spectate)
+        {
+          if (spectatorCountLocked(roomCode) >= limits_.maxPlayersPerRoom)
+          {
+            welcome = errorMessage("too many spectators");
+          }
+          else
+          {
+            spectators_[session] = session->weak_from_this();
+            sessionProtocol_[session] = protocolState;
+            session->roomCode = roomCode;
+            welcome = {
+                {"type", "welcome"},
+                {"protocolVersion", protocolVersion},
+                {"serverTimeMs", unixTimeMs()},
+                {"spectator", true},
+                {"room", roomCode},
+                {"features", nlohmann::json::array({std::string(protocolFeatureSnapshotDelta)})},
+                {"world", worldSummary(world_)}};
+            snapshot = snapshotLocked(currentTick_, nextSnapshotId_++, roomCode);
+            if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
+            {
+              state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
+              state->second.lastSnapshot = snapshot;
+            }
+            auto historyIt = chatHistoryByRoom_.find(roomCode);
+            if (historyIt != chatHistoryByRoom_.end())
+              history.assign(historyIt->second.begin(), historyIt->second.end());
+          }
+        }
+        else
+        {
+        // A spectator can promote itself to a player with a plain join.
+        spectators_.erase(session);
 
         Player *resumable = nullptr;
         if (!resumeToken.empty())
@@ -653,6 +695,7 @@ namespace arena
           if (historyIt != chatHistoryByRoom_.end())
             history.assign(historyIt->second.begin(), historyIt->second.end());
           newPlayer = true;
+        }
         }
       }
     }
@@ -2359,7 +2402,7 @@ namespace arena
   std::vector<GameServer::SessionPtr> GameServer::liveSessionsLocked(const std::string &roomCode) const
   {
     std::vector<SessionPtr> sessions;
-    sessions.reserve(players_.size());
+    sessions.reserve(players_.size() + spectators_.size());
     for (const auto &[_, player] : players_)
     {
       if (!roomCode.empty() && player.roomCode != roomCode)
@@ -2371,7 +2414,35 @@ namespace arena
         sessions.push_back(std::move(s));
       }
     }
+    // Spectators are not simulated players but still receive snapshots and
+    // room broadcasts (chat, events) for the room they are watching.
+    for (const auto &[_, weak] : spectators_)
+    {
+      if (auto s = weak.lock())
+      {
+        if (roomCode.empty() || s->roomCode == roomCode)
+        {
+          sessions.push_back(std::move(s));
+        }
+      }
+    }
     return sessions;
+  }
+
+  std::size_t GameServer::spectatorCountLocked(const std::string &roomCode) const
+  {
+    std::size_t count = 0;
+    for (const auto &[_, weak] : spectators_)
+    {
+      if (auto s = weak.lock())
+      {
+        if (s->roomCode == roomCode)
+        {
+          ++count;
+        }
+      }
+    }
+    return count;
   }
 
   std::vector<GameServer::PreparedPayload> GameServer::snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const nlohmann::json &snapshot)
@@ -2734,6 +2805,7 @@ namespace arena
         {"connectedPlayers", connectedPlayers},
         {"humanPlayers", humanPlayers},
         {"botPlayers", botPlayers},
+        {"spectators", roomScoped ? spectatorCountLocked(roomCodeNormalized) : spectators_.size()},
         {"globalConnectedPlayers", players_.size()},
         {"globalHumanPlayers", humanCountLocked()},
         {"globalBotPlayers", botCountLocked()},
@@ -2775,6 +2847,7 @@ namespace arena
         {"websocket", {
                           {"activeConnections", sessionAbuse_.size()},
                           {"activeRemoteAddresses", connectionsByIp_.size()},
+                          {"activeSpectators", spectators_.size()},
                           {"activeRooms", rooms_.size()},
                           {"maxPlayersPerRoom", limits_.maxPlayersPerRoom},
                           {"maxActiveRooms", limits_.maxActiveRooms},

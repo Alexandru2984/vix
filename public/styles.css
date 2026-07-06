@@ -207,6 +207,56 @@ label {
   display: none;
 }
 
+.watch-button {
+  width: 100%;
+  height: 38px;
+  margin-top: 8px;
+  color: var(--text);
+  font-weight: 650;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(160, 180, 210, 0.28);
+}
+
+.watch-button:hover {
+  border-color: rgba(201, 167, 255, 0.55);
+}
+
+.spectator-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid rgba(201, 167, 255, 0.42);
+  border-radius: 12px;
+  background: rgba(13, 17, 23, 0.86);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
+  color: #c9a7ff;
+  font-weight: 700;
+  z-index: 14;
+}
+
+.spectator-bar.hidden {
+  display: none;
+}
+
+.spectator-bar button {
+  height: 36px;
+  color: #14101f;
+  background: #c9a7ff;
+}
+
+/* Spectators have no controllable player, so hide player-only controls. */
+body.spectating .ability-bar,
+body.spectating .quick-pings,
+body.spectating .touch-stick,
+body.spectating .chat-panel input {
+  display: none;
+}
+
 .room-browser {
   display: grid;
   gap: 8px;

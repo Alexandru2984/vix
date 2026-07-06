@@ -536,6 +536,49 @@ namespace
     require(resynced.value("snapshotId", 0ULL) > joinSnapshotId, "resync snapshot should advance the snapshot id");
   }
 
+  void gameServerSupportsSpectators()
+  {
+    arena::GameServer server;
+    CapturedClient player;
+    require(server.onOpen(player.connection), "player client should open");
+    server.onMessage(player.connection.get(), R"({"type":"join","name":"Star","room":"watch-room"})");
+    require(player.sawType("welcome"), "player should join the watched room");
+
+    CapturedClient watcher;
+    require(server.onOpen(watcher.connection), "spectator client should open");
+    server.onMessage(watcher.connection.get(), R"({"type":"join","name":"Watcher","room":"watch-room","spectate":true})");
+    const auto *watcherWelcome = watcher.firstType("welcome");
+    require(watcherWelcome != nullptr, "spectator should receive a welcome");
+    require(watcherWelcome->value("spectator", false), "spectator welcome should be flagged");
+    require(!watcherWelcome->contains("id"), "spectator welcome should not assign a player id");
+    require(watcher.sawType("snapshot"), "spectator should receive an initial snapshot");
+
+    auto stats = server.statsJson("watch-room");
+    requireEq(stats.value("spectators", 0), 1, "room stats should count the spectator");
+    requireEq(stats.value("humanPlayers", 0), 1, "spectator must not count as a human player");
+
+    const std::size_t beforeChat = watcher.messages.size();
+    server.onMessage(player.connection.get(), R"({"type":"chat","message":"welcome watchers"})");
+    require(watcher.messages.size() > beforeChat, "spectator should receive room chat");
+    require(watcher.sawType("chat"), "spectator should see the chat message type");
+
+    // Promote the spectator to a real player with a plain join.
+    server.onMessage(watcher.connection.get(), R"({"type":"join","name":"Watcher","room":"watch-room"})");
+    const auto *promoted = watcher.firstType("welcome");
+    require(promoted != nullptr, "promotion should re-send welcome");
+    stats = server.statsJson("watch-room");
+    requireEq(stats.value("spectators", 0), 0, "promotion should free the spectator slot");
+    requireEq(stats.value("humanPlayers", 0), 2, "promoted spectator should now count as a player");
+
+    // A spectator that disconnects should release its slot.
+    CapturedClient leaver;
+    require(server.onOpen(leaver.connection), "leaving spectator should open");
+    server.onMessage(leaver.connection.get(), R"({"type":"join","name":"Bye","room":"watch-room","spectate":true})");
+    requireEq(server.statsJson("watch-room").value("spectators", 0), 1, "second spectator should register");
+    server.onClose(leaver.connection.get());
+    requireEq(server.statsJson("watch-room").value("spectators", 0), 0, "spectator disconnect should free the slot");
+  }
+
   void gameServerLoadsPersistentLeaderboard()
   {
     const auto dir = std::filesystem::temp_directory_path() / ("vix-arena-test-" + std::to_string(arena::unixTimeMs()));
@@ -637,6 +680,7 @@ int main()
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
     run("game server resumes detached players", gameServerResumesDetachedPlayers);
     run("game server resends full snapshot on resync", gameServerResendsFullSnapshotOnResync);
+    run("game server supports spectators", gameServerSupportsSpectators);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
     run("game server bounds persistent state", gameServerBoundsPersistentState);
   }

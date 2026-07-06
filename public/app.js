@@ -31,6 +31,9 @@
   const lobbyLeaderboardMeta = document.getElementById("lobbyLeaderboardMeta");
   const lobbyLeaderboard = document.getElementById("lobbyLeaderboard");
   const joinBtn = document.getElementById("joinBtn");
+  const watchBtn = document.getElementById("watchBtn");
+  const spectatorBar = document.getElementById("spectatorBar");
+  const spectatorJoinBtn = document.getElementById("spectatorJoinBtn");
   const joinError = document.getElementById("joinError");
   const chatLog = document.getElementById("chatLog");
   const chatInput = document.getElementById("chatInput");
@@ -61,6 +64,8 @@
     ws: null,
     joined: false,
     pendingJoin: false,
+    spectator: false,
+    pendingSpectate: false,
     protocolVersion: 2,
     localId: null,
     room: "public",
@@ -210,9 +215,14 @@
     if (name) localStorage.setItem("vix.name", name);
     localStorage.setItem("vix.room", room);
     state.room = room;
+    const spectate = state.pendingSpectate || (state.spectator && !state.pendingJoin);
     const message = { type: "join", name, room, protocolVersion: state.protocolVersion, supports: ["snapshot_delta"] };
-    const resume = localStorage.getItem(resumeKey(room));
-    if (resume) message.resume = resume;
+    if (spectate) {
+      message.spectate = true;
+    } else {
+      const resume = localStorage.getItem(resumeKey(room));
+      if (resume) message.resume = resume;
+    }
     send(message);
   }
 
@@ -396,7 +406,9 @@
     if (!msg || typeof msg.type !== "string") return;
 
     if (msg.type === "welcome") {
-      state.localId = msg.id;
+      const spectator = Boolean(msg.spectator);
+      state.spectator = spectator;
+      state.localId = spectator ? null : msg.id;
       state.room = msg.room || state.room;
       if (roomInput) roomInput.value = state.room;
       updateStatsLink();
@@ -405,8 +417,14 @@
       joinPanel.classList.add("hidden");
       state.joined = true;
       state.pendingJoin = false;
+      state.pendingSpectate = false;
+      document.body.classList.toggle("spectating", spectator);
+      if (spectatorBar) spectatorBar.classList.toggle("hidden", !spectator);
       setJoinError("");
-      if (typeof msg.resumeToken === "string" && msg.resumeToken) {
+      if (spectator) {
+        resetTouchInput();
+        appendSystem(`Spectating ${state.room} - watching live`);
+      } else if (typeof msg.resumeToken === "string" && msg.resumeToken) {
         localStorage.setItem(resumeKey(state.room), msg.resumeToken);
       }
       if (msg.resumed) appendSystem("Reconnected - progress restored");
@@ -713,6 +731,16 @@
   }
 
   function describeObjective(local) {
+    if (state.spectator) {
+      const leader = leaderRenderPlayer();
+      return {
+        label: "Spectating",
+        detail: leader ? `Leader ${leader.name || "?"} · ${leader.score || 0}` : "Watching live",
+        x: state.camera.x,
+        y: state.camera.y,
+        color: "#c9a7ff"
+      };
+    }
     if (!state.joined || !local) {
       return { label: "Join arena", detail: "Pick a name to enter", x: state.camera.x, y: state.camera.y, color: "#66ccff" };
     }
@@ -941,6 +969,7 @@
   }
 
   function sendInput(force = false) {
+    if (state.spectator) return;
     const key = JSON.stringify(state.keys);
     if (!force && key === state.lastInputSent) return;
     state.lastInputSent = key;
@@ -948,13 +977,13 @@
   }
 
   function castAbility(ability) {
-    if (!state.joined) return;
+    if (!state.joined || state.spectator) return;
     haptic(10);
     send({ type: "ability", ability });
   }
 
   function sendQuickPing(message) {
-    if (!state.joined) return;
+    if (!state.joined || state.spectator) return;
     haptic(8);
     send({ type: "chat", message });
   }
@@ -1110,7 +1139,7 @@
     } else if (event.key === "Enter") {
       event.preventDefault();
       const message = chatInput.value.trim();
-      if (message) {
+      if (message && !state.spectator) {
         send({ type: "chat", message });
         chatInput.value = "";
       }
@@ -1148,6 +1177,24 @@
   joinBtn.addEventListener("click", () => {
     haptic(10);
     setJoinError("");
+    state.pendingJoin = true;
+    state.pendingSpectate = false;
+    sendJoin();
+  });
+
+  watchBtn?.addEventListener("click", () => {
+    haptic(8);
+    setJoinError("");
+    state.pendingJoin = false;
+    state.pendingSpectate = true;
+    sendJoin();
+  });
+
+  spectatorJoinBtn?.addEventListener("click", () => {
+    haptic(10);
+    // Convert an active spectator into a real player with a plain join.
+    state.spectator = false;
+    state.pendingSpectate = false;
     state.pendingJoin = true;
     sendJoin();
   });
@@ -1482,6 +1529,14 @@
     }
   }
 
+  function leaderRenderPlayer() {
+    let best = null;
+    for (const rp of state.renderPlayers.values()) {
+      if (!best || (rp.score || 0) > (best.score || 0)) best = rp;
+    }
+    return best;
+  }
+
   function render() {
     const now = performance.now();
     updatePerformanceHud(now);
@@ -1491,9 +1546,12 @@
     const viewW = canvas.clientWidth;
     const viewH = canvas.clientHeight;
     const local = state.renderPlayers.get(state.localId);
-    if (local) {
-      state.camera.x += (local.x - state.camera.x) * 0.12;
-      state.camera.y += (local.y - state.camera.y) * 0.12;
+    // Spectators have no local player, so the camera trails the current
+    // leader (highest score) to keep the action in frame.
+    const focus = local || (state.spectator ? leaderRenderPlayer() : null);
+    if (focus) {
+      state.camera.x += (focus.x - state.camera.x) * 0.12;
+      state.camera.y += (focus.y - state.camera.y) * 0.12;
     }
     updateObjective(local);
 

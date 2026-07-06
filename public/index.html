@@ -79,6 +79,11 @@
           <button id="settingsBtn" class="ping-button" type="button" aria-expanded="false">Settings</button>
         </section>
 
+        <div id="spectatorBar" class="spectator-bar hidden" role="status">
+          <span>Spectating</span>
+          <button id="spectatorJoinBtn" type="button">Join match</button>
+        </div>
+
         <section id="joinPanel" class="join-panel" aria-labelledby="joinTitle">
           <h2 id="joinTitle">Join arena</h2>
           <label for="nameInput">Display name</label>
@@ -92,6 +97,7 @@
             <button id="copyRoomBtn" type="button">Link</button>
           </div>
           <p id="joinError" class="join-error hidden" role="alert"></p>
+          <button id="watchBtn" class="watch-button" type="button">Watch this room</button>
           <section class="room-browser" aria-labelledby="roomBrowserTitle">
             <div class="room-browser-head">
               <h3 id="roomBrowserTitle">Rooms</h3>
