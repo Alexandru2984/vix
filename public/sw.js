@@ -1,8 +1,8 @@
-const CACHE_VERSION = "vix-arena-pwa-hazards-20260518";
+const CACHE_VERSION = "vix-arena-pwa-spectator-20260706";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const STATIC_ASSETS = [
-  "/styles.css?v=hazards-20260518",
-  "/app.js?v=hazards-20260518",
+  "/styles.css?v=spectator-20260706",
+  "/app.js?v=spectator-20260706",
   "/manifest.json",
   "/icons/icon.svg",
   "/icons/maskable.svg"

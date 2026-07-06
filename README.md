@@ -230,11 +230,16 @@ See [BENCHMARK.md](BENCHMARK.md) for measured HTTP/WebSocket results, interpreta
 
 - Server-authoritative movement, bounds, obstacles, scoring, pickups, powerups, hazards, and abilities.
 - 20 ticks/sec authoritative game loop.
-- WebSocket protocol for join, input, abilities, chat, ping/pong, and snapshots.
+- WebSocket protocol for join, input, abilities, chat, ping/pong, snapshots, resync, spectating, and session resume.
+- Full and delta snapshots (`snapshot_delta`) with per-client baseline negotiation and optional `permessage-deflate` compression.
+- Session resume: dropped players stay detached within a grace period and reclaim their slot and score with a bearer resume token.
+- Spectator mode: join read-only to watch a room live; the client camera trails the current leader.
+- Dash-to-bump combat: dashing into a rival knocks them back and steals points, with brief post-bump protection.
 - Bots fill the arena for solo play when humans are connected.
 - Contested control zone, danger zones, Orb Run mini quest, leaderboard, lobby leaderboard preview, round summary overlay, minimap, event feed, room browser, objective markers, and score feedback.
-- Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, settings drawer, HUD, FPS/snapshot-rate indicators, and connection metrics.
+- Responsive browser frontend with canvas rendering, interpolation, keyboard controls, touch joystick, chat, click-to-mute, settings drawer, HUD, FPS/snapshot-rate indicators, and connection metrics.
 - Reduced-effects mode for lower-motion or lower-power clients.
+- Server-shutdown notice so clients show a restart banner instead of churning reconnects.
 - PWA metadata, app icons, and a conservative service worker for static assets without caching live API/WebSocket traffic.
 - PostgreSQL-backed leaderboard and recent match history, with JSON-on-disk fallback.
 - Public stats page for runtime counters, leaderboard, and recent matches.
