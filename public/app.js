@@ -214,12 +214,15 @@
   const savedRoom = roomFromLocation() || localStorage.getItem("vix.room") || "public";
   if (roomInput) roomInput.value = sanitizeRoom(savedRoom);
 
+  // Mirrors the server's sanitizeRoomCode: runs of non-alphanumerics collapse
+  // to a single dash, so client links always match the server-side room.
   function sanitizeRoom(value) {
     const clean = String(value || "public")
       .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 24);
+      .slice(0, 24)
+      .replace(/-+$/g, "");
     return clean.length >= 3 ? clean : "public";
   }
 

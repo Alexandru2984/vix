@@ -20,12 +20,14 @@ async function getJson(path) {
   return res.json();
 }
 
+// Mirrors the server's sanitizeRoomCode so filters match server rooms.
 function sanitizeRoom(value) {
   const clean = String(value || "")
     .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 24);
+    .slice(0, 24)
+    .replace(/-+$/g, "");
   return clean.length >= 3 ? clean : "";
 }
 
