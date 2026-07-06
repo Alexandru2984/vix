@@ -925,6 +925,20 @@ namespace
                         { self->onWrite(ec, sp->need_eof()); });
     }
 
+    static std::string staticFileEtag(const std::filesystem::path &path, std::uintmax_t size)
+    {
+      std::error_code ec;
+      const auto mtime = std::filesystem::last_write_time(path, ec);
+      if (ec)
+      {
+        return {};
+      }
+      const auto stamp = static_cast<std::uint64_t>(mtime.time_since_epoch().count());
+      std::ostringstream tag;
+      tag << "\"" << std::hex << stamp << "-" << size << "\"";
+      return tag.str();
+    }
+
     void serveFile(const std::string &target, http::response<http::string_body> &res)
     {
       if (!safeTarget(target))
@@ -981,6 +995,19 @@ namespace
         return;
       }
 
+      const std::string cacheControl = target == "/" || target == "/docs" || target == "/stats" || target == "/sw.js" || target == "/manifest.json" ? "no-store" : "public, max-age=300";
+      const std::string etag = staticFileEtag(path, size);
+      if (!etag.empty())
+      {
+        if (const auto match = req_.find(http::field::if_none_match); match != req_.end() && std::string(match->value()) == etag)
+        {
+          res = makeResponse(req_, http::status::not_modified, "", mimeType(path));
+          res.set(http::field::etag, etag);
+          res.set(http::field::cache_control, cacheControl);
+          return;
+        }
+      }
+
       std::string body;
       if (!readFile(path, body))
       {
@@ -989,7 +1016,11 @@ namespace
       }
 
       res = makeResponse(req_, http::status::ok, std::move(body), mimeType(path));
-      res.set(http::field::cache_control, target == "/" || target == "/docs" || target == "/stats" || target == "/sw.js" || target == "/manifest.json" ? "no-store" : "public, max-age=300");
+      if (!etag.empty())
+      {
+        res.set(http::field::etag, etag);
+      }
+      res.set(http::field::cache_control, cacheControl);
     }
 
     void onWrite(beast::error_code ec, bool closeAfter)
