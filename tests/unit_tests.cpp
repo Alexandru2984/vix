@@ -178,7 +178,9 @@ namespace
 
   void gameServerJoinChatAndRateLimitFlow()
   {
-    arena::GameServer server;
+    arena::GameServer::Limits limits;
+    limits.resumeGraceSeconds = 0;
+    arena::GameServer server({}, "", {}, limits);
     CapturedClient client;
     require(server.onOpen(client.connection), "client should open");
 
@@ -357,6 +359,7 @@ namespace
   {
     arena::GameServer::Limits limits;
     limits.maxActiveRooms = 2;
+    limits.resumeGraceSeconds = 0;
     arena::GameServer server({}, "", {}, limits);
 
     CapturedClient alpha;
@@ -437,6 +440,7 @@ namespace
   {
     arena::GameServer::Limits limits;
     limits.stalePlayerSeconds = 0;
+    limits.resumeGraceSeconds = 0;
     arena::GameServer server({}, "", {}, limits);
     CapturedClient client;
     require(server.onOpen(client.connection), "stale test client should open");
@@ -474,6 +478,46 @@ namespace
     require(stats.at("websocket").value("snapshotDeltasSent", 0) > 0, "stats should count snapshot deltas");
     const std::string metrics = server.metricsText();
     require(metrics.find("vix_arena_ws_snapshot_deltas_sent_total") != std::string::npos, "metrics should expose snapshot deltas");
+  }
+
+  void gameServerResumesDetachedPlayers()
+  {
+    arena::GameServer server;
+    CapturedClient first;
+    require(server.onOpen(first.connection), "resume client should open");
+    server.onMessage(first.connection.get(), R"({"type":"join","name":"Comeback"})");
+    const auto *welcome = first.firstType("welcome");
+    require(welcome != nullptr, "resume test should join");
+    const std::string playerId = welcome->value("id", "");
+    const std::string token = welcome->value("resumeToken", "");
+    require(!token.empty(), "welcome should carry a resume token");
+
+    server.onClose(first.connection.get());
+    auto health = server.healthJson();
+    requireEq(health.value("humans", 0), 1, "detached player should stay within grace");
+    requireEq(health.value("detachedHumans", 0), 1, "health should report detached players");
+    const auto snapshotState = server.stateJson();
+    requireEq(snapshotState.value("humans", 0), 0, "detached player should be hidden from room state");
+
+    CapturedClient second;
+    require(server.onOpen(second.connection), "second client should open");
+    nlohmann::json resumeJoin = {{"type", "join"}, {"name", "Ignored"}, {"resume", token}};
+    server.onMessage(second.connection.get(), resumeJoin.dump());
+    const auto *resumed = second.firstType("welcome");
+    require(resumed != nullptr, "resume join should be welcomed");
+    require(resumed->value("resumed", false), "resume join should be flagged as resumed");
+    requireEq(resumed->value("id", ""), playerId, "resume should return the original player id");
+
+    health = server.healthJson();
+    requireEq(health.value("humans", 0), 1, "resume should not duplicate the player");
+    requireEq(health.value("detachedHumans", 0), 0, "resume should clear the detached state");
+
+    CapturedClient stranger;
+    require(server.onOpen(stranger.connection), "stranger client should open");
+    server.onMessage(stranger.connection.get(), R"({"type":"join","name":"Fresh","resume":"bogus-token"})");
+    const auto *fresh = stranger.firstType("welcome");
+    require(fresh != nullptr, "bogus resume should fall back to a fresh join");
+    require(fresh->value("id", "") != playerId, "bogus resume must not steal an attached player");
   }
 
   void gameServerResendsFullSnapshotOnResync()
@@ -591,6 +635,7 @@ int main()
     run("game server isolates rooms", gameServerIsolatesRooms);
     run("game server closes stale sessions and prunes rooms", gameServerClosesStaleSessionsAndPrunesRooms);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
+    run("game server resumes detached players", gameServerResumesDetachedPlayers);
     run("game server resends full snapshot on resync", gameServerResendsFullSnapshotOnResync);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
     run("game server bounds persistent state", gameServerBoundsPersistentState);

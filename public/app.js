@@ -200,13 +200,20 @@
     }
   }
 
+  function resumeKey(room) {
+    return `vix.resume.${room}`;
+  }
+
   function sendJoin() {
     const name = nameInput.value.trim();
     const room = sanitizeRoom(roomInput?.value || roomFromLocation() || "public");
     if (name) localStorage.setItem("vix.name", name);
     localStorage.setItem("vix.room", room);
     state.room = room;
-    send({ type: "join", name, room, protocolVersion: state.protocolVersion, supports: ["snapshot_delta"] });
+    const message = { type: "join", name, room, protocolVersion: state.protocolVersion, supports: ["snapshot_delta"] };
+    const resume = localStorage.getItem(resumeKey(room));
+    if (resume) message.resume = resume;
+    send(message);
   }
 
   const savedName = localStorage.getItem("vix.name");
@@ -399,6 +406,10 @@
       state.joined = true;
       state.pendingJoin = false;
       setJoinError("");
+      if (typeof msg.resumeToken === "string" && msg.resumeToken) {
+        localStorage.setItem(resumeKey(state.room), msg.resumeToken);
+      }
+      if (msg.resumed) appendSystem("Reconnected - progress restored");
     } else if (msg.type === "snapshot") {
       recordSnapshotMessage();
       rememberSnapshotMeta(msg);

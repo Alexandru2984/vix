@@ -25,6 +25,7 @@ The server answers with:
   "protocolVersion": 2,
   "serverTimeMs": 1779035000000,
   "id": "p-1",
+  "resumeToken": "f3a9c2...",
   "features": ["snapshot_delta"],
   "world": {
     "width": 2000,
@@ -33,6 +34,16 @@ The server answers with:
   }
 }
 ```
+
+## Session Resume
+
+`welcome` carries a per-player `resumeToken`. When a connection drops, the server keeps the player detached (hidden from snapshots and excluded from the simulation, score preserved) for a grace period (`RESUME_GRACE_SECONDS`, default 45). A client reconnecting to the same room may present the token in `join`:
+
+```json
+{"type":"join","name":"Micu","room":"public","resume":"f3a9c2..."}
+```
+
+If the token matches a detached player in that room, the server reattaches the session and answers with the original player `id`, the same `resumeToken`, and `"resumed": true`. Otherwise the join proceeds as a fresh player with a new token. Tokens are bearer secrets scoped to one player slot; clients should store them locally and never share them.
 
 ## Client Messages
 

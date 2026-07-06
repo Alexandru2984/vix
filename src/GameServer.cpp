@@ -261,7 +261,17 @@ namespace arena
         if (playerIt != players_.end())
         {
           roomCode = playerIt->second.roomCode;
-          players_.erase(playerIt);
+          if (limits_.resumeGraceSeconds > 0)
+          {
+            // Keep the player record around so a reconnect with the
+            // resume token can reclaim it; cleanup removes it after
+            // the grace period expires.
+            detachPlayerLocked(playerIt->second, std::chrono::steady_clock::now());
+          }
+          else
+          {
+            players_.erase(playerIt);
+          }
         }
         left = {{"type", "player_left"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", id}, {"room", roomCode}};
         hasLeft = true;
@@ -420,6 +430,30 @@ namespace arena
     return benchmarkSourceLocked(ip) ? limits_.benchmarkWsMessageRefillPerSecond : limits_.wsMessageRefillPerSecond;
   }
 
+  void GameServer::detachPlayerLocked(Player &player, std::chrono::steady_clock::time_point now)
+  {
+    player.session.reset();
+    player.disconnectedAt = now;
+    player.input = {};
+  }
+
+  std::string GameServer::makeResumeToken()
+  {
+    static const char hexDigits[] = "0123456789abcdef";
+    std::random_device rd;
+    std::string token;
+    token.reserve(32);
+    for (int i = 0; i < 8; ++i)
+    {
+      const auto value = rd();
+      for (int shift = 0; shift < 16; shift += 4)
+      {
+        token.push_back(hexDigits[(value >> shift) & 0xF]);
+      }
+    }
+    return token;
+  }
+
   void GameServer::closeSession(ClientConnection *session, const std::string &reason)
   {
     if (session && session->close)
@@ -439,6 +473,15 @@ namespace arena
     if (message.contains("room") && message["room"].is_string())
     {
       roomCode = sanitizeRoomCode(message["room"].get<std::string>());
+    }
+    std::string resumeToken;
+    if (message.contains("resume") && message["resume"].is_string())
+    {
+      resumeToken = message["resume"].get<std::string>();
+      if (resumeToken.size() > 64)
+      {
+        resumeToken.clear();
+      }
     }
 
     std::vector<nlohmann::json> history;
@@ -488,7 +531,55 @@ namespace arena
                                                 jsonArrayContainsString(message["supports"], protocolFeatureSnapshotDelta);
         }
 
-        if (humanCountLocked(roomCode) >= maxPlayersForIpLocked(session ? session->remoteAddress : ""))
+        Player *resumable = nullptr;
+        if (!resumeToken.empty())
+        {
+          for (auto &[_, candidate] : players_)
+          {
+            if (!candidate.bot && candidate.detached() && candidate.roomCode == roomCode && candidate.resumeToken == resumeToken)
+            {
+              resumable = &candidate;
+              break;
+            }
+          }
+        }
+
+        if (resumable != nullptr)
+        {
+          const auto now = std::chrono::steady_clock::now();
+          resumable->session = session->shared_from_this();
+          resumable->disconnectedAt = {};
+          resumable->lastSeen = now;
+          resumable->lastInput = now;
+          resumable->input = {};
+          sessionToPlayer_[session] = resumable->id;
+          sessionProtocol_[session] = protocolState;
+          session->roomCode = roomCode;
+          addEventLocked("join", resumable->name + " reconnected", roomCode);
+
+          welcome = {
+              {"type", "welcome"},
+              {"protocolVersion", protocolVersion},
+              {"serverTimeMs", unixTimeMs()},
+              {"id", resumable->id},
+              {"room", roomCode},
+              {"resumeToken", resumable->resumeToken},
+              {"resumed", true},
+              {"features", nlohmann::json::array({std::string(protocolFeatureSnapshotDelta)})},
+              {"world", worldSummary(world_)}};
+          joined = {{"type", "player_joined"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", resumable->id}, {"name", resumable->name}, {"room", roomCode}};
+          snapshot = snapshotLocked(currentTick_, nextSnapshotId_++, roomCode);
+          if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
+          {
+            state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
+            state->second.lastSnapshot = snapshot;
+          }
+          auto historyIt = chatHistoryByRoom_.find(roomCode);
+          if (historyIt != chatHistoryByRoom_.end())
+            history.assign(historyIt->second.begin(), historyIt->second.end());
+          newPlayer = true;
+        }
+        else if (humanCountLocked(roomCode) >= maxPlayersForIpLocked(session ? session->remoteAddress : ""))
         {
           welcome = errorMessage("arena full");
           history.clear();
@@ -516,6 +607,7 @@ namespace arena
           player.id = makePlayerId(n);
           player.name = name;
           player.color = randomColor();
+          player.resumeToken = makeResumeToken();
           player.roomCode = roomCode;
           player.x = x;
           player.y = y;
@@ -533,6 +625,7 @@ namespace arena
 
           const std::string id = player.id;
           const std::string playerName = player.name;
+          const std::string playerResumeToken = player.resumeToken;
           sessionToPlayer_[session] = id;
           sessionProtocol_[session] = protocolState;
           players_[id] = std::move(player);
@@ -546,6 +639,7 @@ namespace arena
               {"serverTimeMs", unixTimeMs()},
               {"id", id},
               {"room", roomCode},
+              {"resumeToken", playerResumeToken},
               {"features", nlohmann::json::array({std::string(protocolFeatureSnapshotDelta)})},
               {"world", worldSummary(world_)}};
           joined = {{"type", "player_joined"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", id}, {"name", playerName}, {"room", roomCode}};
@@ -930,6 +1024,10 @@ namespace arena
 
     for (auto &[_, player] : players_)
     {
+      if (player.detached())
+      {
+        continue;
+      }
       double dx = 0.0;
       double dy = 0.0;
 
@@ -1743,7 +1841,7 @@ namespace arena
 
     for (auto &[_, player] : players_)
     {
-      if (player.roomCode != roomCode)
+      if (player.roomCode != roomCode || player.detached())
       {
         continue;
       }
@@ -1791,7 +1889,7 @@ namespace arena
 
     for (auto &[_, player] : players_)
     {
-      if (player.roomCode != roomCode)
+      if (player.roomCode != roomCode || player.detached())
       {
         continue;
       }
@@ -1822,7 +1920,7 @@ namespace arena
     const auto now = std::chrono::steady_clock::now();
     for (auto &[_, player] : players_)
     {
-      if (player.roomCode != roomCode)
+      if (player.roomCode != roomCode || player.detached())
       {
         continue;
       }
@@ -1877,7 +1975,7 @@ namespace arena
 
     for (auto &[_, player] : players_)
     {
-      if (player.roomCode != roomCode)
+      if (player.roomCode != roomCode || player.detached())
       {
         continue;
       }
@@ -1977,19 +2075,34 @@ namespace arena
         ++it;
         continue;
       }
-      const bool expiredSession = it->second.session.expired();
-      const bool stale = now - it->second.lastSeen > std::chrono::seconds(limits_.stalePlayerSeconds);
+      Player &player = it->second;
+
+      if (player.detached())
+      {
+        // player_left was already broadcast when the player detached.
+        if (now - player.disconnectedAt > std::chrono::seconds(limits_.resumeGraceSeconds))
+        {
+          affectedRooms.push_back(player.roomCode);
+          it = players_.erase(it);
+          continue;
+        }
+        ++it;
+        continue;
+      }
+
+      const bool expiredSession = player.session.expired();
+      const bool stale = now - player.lastSeen > std::chrono::seconds(limits_.stalePlayerSeconds);
       if (expiredSession || stale)
       {
-        const std::string roomCode = it->second.roomCode;
-        leftEvents.push_back({{"type", "player_left"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", it->second.id}, {"room", roomCode}});
-        if (auto session = it->second.session.lock())
+        const std::string roomCode = player.roomCode;
+        leftEvents.push_back({{"type", "player_left"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", player.id}, {"room", roomCode}});
+        if (auto session = player.session.lock())
         {
           closeSession(session.get(), "inactive");
         }
         for (auto sit = sessionToPlayer_.begin(); sit != sessionToPlayer_.end();)
         {
-          if (sit->second == it->second.id)
+          if (sit->second == player.id)
           {
             sessionProtocol_.erase(sit->first);
             sit = sessionToPlayer_.erase(sit);
@@ -1999,8 +2112,16 @@ namespace arena
             ++sit;
           }
         }
-        affectedRooms.push_back(roomCode);
-        it = players_.erase(it);
+        if (limits_.resumeGraceSeconds > 0)
+        {
+          detachPlayerLocked(player, now);
+          ++it;
+        }
+        else
+        {
+          affectedRooms.push_back(roomCode);
+          it = players_.erase(it);
+        }
       }
       else
       {
@@ -2023,7 +2144,7 @@ namespace arena
     nlohmann::json players = nlohmann::json::array();
     for (const auto &[_, player] : players_)
     {
-      if (player.roomCode == roomCode)
+      if (player.roomCode == roomCode && !player.detached())
       {
         players.push_back(playerToJson(player));
       }
@@ -2486,11 +2607,14 @@ namespace arena
   nlohmann::json GameServer::healthJson() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    const auto detachedHumans = static_cast<std::size_t>(std::count_if(players_.begin(), players_.end(), [](const auto &entry)
+                                                                       { return !entry.second.bot && entry.second.detached(); }));
     return {
         {"status", "ok"},
         {"service", "vix-arena"},
         {"players", players_.size()},
         {"humans", humanCountLocked()},
+        {"detachedHumans", detachedHumans},
         {"bots", botCountLocked()},
         {"uptimeSeconds", uptimeSeconds(startedAt_)}};
   }
@@ -2525,7 +2649,7 @@ namespace arena
     std::size_t bots = 0;
     for (const auto &[_, player] : players_)
     {
-      if (player.roomCode != roomCodeNormalized)
+      if (player.roomCode != roomCodeNormalized || player.detached())
       {
         continue;
       }
@@ -2649,6 +2773,10 @@ namespace arena
     std::unordered_map<std::string, RoomCounts> rooms;
     for (const auto &[_, player] : players_)
     {
+      if (player.detached())
+      {
+        continue;
+      }
       auto &room = rooms[player.roomCode.empty() ? "public" : player.roomCode];
       ++room.players;
       if (player.bot)

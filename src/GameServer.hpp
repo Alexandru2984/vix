@@ -30,6 +30,7 @@ namespace arena
       std::size_t maxActiveRooms{128};
       std::size_t maxConnectionsPerIp{16};
       int stalePlayerSeconds{20};
+      int resumeGraceSeconds{45};
       double wsMessageBurst{36.0};
       double wsMessageRefillPerSecond{14.0};
       std::uint32_t maxInvalidMessagesPerConnection{5};
@@ -222,6 +223,8 @@ namespace arena
     [[nodiscard]] double wsMessageRefillForIpLocked(const std::string &ip) const;
 
     [[nodiscard]] std::string randomColor();
+    [[nodiscard]] static std::string makeResumeToken();
+    void detachPlayerLocked(Player &player, std::chrono::steady_clock::time_point now);
     [[nodiscard]] Orb spawnOrbLocked(RoomState &room);
     [[nodiscard]] Powerup spawnPowerupLocked(RoomState &room);
     [[nodiscard]] Hazard spawnHazardLocked(RoomState &room);

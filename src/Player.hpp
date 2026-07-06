@@ -34,7 +34,16 @@ namespace arena
     std::string name;
     std::string color;
     std::string roomCode{"public"};
+    // Bearer token that lets a reconnecting client reclaim this player
+    // while it is detached (disconnected but within the resume grace).
+    std::string resumeToken;
+    std::chrono::steady_clock::time_point disconnectedAt{};
     bool bot{false};
+
+    [[nodiscard]] bool detached() const
+    {
+      return disconnectedAt != std::chrono::steady_clock::time_point{};
+    }
     int score{0};
     int orbQuestProgress{0};
     int roundOrbPickups{0};
