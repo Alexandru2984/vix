@@ -2043,6 +2043,48 @@ namespace arena
       }
       player.x = candidateX;
       player.y = candidateY;
+      resolveDashBumpsLocked(player, now);
+    }
+  }
+
+  void GameServer::resolveDashBumpsLocked(Player &dasher, std::chrono::steady_clock::time_point now)
+  {
+    const double bumpRadius = World::playerRadius * 2.0;
+    const double bumpRadiusSq = bumpRadius * bumpRadius;
+
+    for (auto &[_, victim] : players_)
+    {
+      if (&victim == &dasher || victim.roomCode != dasher.roomCode || victim.detached())
+      {
+        continue;
+      }
+      if (now < victim.bumpProtectedUntil || now < victim.shieldUntil)
+      {
+        continue;
+      }
+      if (distanceSq(dasher.x, dasher.y, victim.x, victim.y) > bumpRadiusSq)
+      {
+        continue;
+      }
+
+      victim.bumpProtectedUntil = now + std::chrono::milliseconds(bumpProtectionMs_);
+      double knockedX = victim.x + dasher.facingX * bumpKnockback_;
+      double knockedY = victim.y + dasher.facingY * bumpKnockback_;
+      world_.clampToBounds(knockedX, knockedY);
+      if (!world_.collides(knockedX, knockedY))
+      {
+        victim.x = knockedX;
+        victim.y = knockedY;
+      }
+
+      const int steal = std::min(victim.score, std::max(bumpMinSteal_, victim.score / 10));
+      if (steal > 0)
+      {
+        victim.score -= steal;
+        dasher.score += steal;
+        ++totalBumpsSinceStart_;
+        addEventLocked("bump", dasher.name + " bumped " + victim.name + " and stole " + std::to_string(steal), dasher.roomCode);
+      }
     }
   }
 
@@ -2707,6 +2749,7 @@ namespace arena
         {"totalPowerupsSinceStart", totalPowerupsSinceStart_},
         {"totalHazardDamageSinceStart", totalHazardDamage_},
         {"totalQuestsCompletedSinceStart", totalQuestsCompleted_},
+        {"totalBumpsSinceStart", totalBumpsSinceStart_},
         {"roundNumber", roundNumber},
         {"totalRoundsCompletedSinceStart", totalRoundsCompleted_},
         {"persistence", {
@@ -2897,6 +2940,7 @@ namespace arena
     std::uint64_t totalOrbPickups = 0;
     std::uint64_t totalPowerups = 0;
     std::uint64_t totalQuests = 0;
+    std::uint64_t totalBumps = 0;
     std::uint64_t totalRounds = 0;
     std::uint64_t totalControlPoints = 0;
     std::uint64_t totalHazardDamage = 0;
@@ -2919,6 +2963,7 @@ namespace arena
       totalOrbPickups = totalOrbPickups_;
       totalPowerups = totalPowerupsSinceStart_;
       totalQuests = totalQuestsCompleted_;
+      totalBumps = totalBumpsSinceStart_;
       totalRounds = totalRoundsCompleted_;
       totalControlPoints = totalControlZonePoints_;
       totalHazardDamage = totalHazardDamage_;
@@ -2960,6 +3005,7 @@ namespace arena
     appendMetric(out, "vix_arena_orb_pickups_total", "Total orb pickups.", "counter", totalOrbPickups);
     appendMetric(out, "vix_arena_powerup_pickups_total", "Total powerup pickups.", "counter", totalPowerups);
     appendMetric(out, "vix_arena_quests_completed_total", "Total Orb Run quests completed.", "counter", totalQuests);
+    appendMetric(out, "vix_arena_bumps_total", "Total dash bumps that stole points.", "counter", totalBumps);
     appendMetric(out, "vix_arena_rounds_completed_total", "Total rounds completed.", "counter", totalRounds);
     appendMetric(out, "vix_arena_control_zone_points_total", "Total points awarded by control zone.", "counter", totalControlPoints);
     appendMetric(out, "vix_arena_hazard_damage_total", "Total score points removed by danger zones.", "counter", totalHazardDamage);

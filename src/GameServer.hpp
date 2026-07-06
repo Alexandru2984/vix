@@ -197,6 +197,7 @@ namespace arena
     void handleHazardsLocked(RoomState &room, const std::string &roomCode, double dt);
     void handleControlZoneLocked(RoomState &room, const std::string &roomCode, double dt);
     void applyDashLocked(Player &player, std::chrono::steady_clock::time_point now);
+    void resolveDashBumpsLocked(Player &dasher, std::chrono::steady_clock::time_point now);
     void addEventLocked(std::string type, std::string text, std::string roomCode = "public");
     void cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents);
     [[nodiscard]] nlohmann::json snapshotLocked(std::uint64_t tick, std::uint64_t snapshotId, const std::string &roomCode) const;
@@ -256,6 +257,7 @@ namespace arena
     std::uint64_t totalPowerupsSinceStart_{0};
     std::uint64_t totalHazardDamage_{0};
     std::uint64_t totalQuestsCompleted_{0};
+    std::uint64_t totalBumpsSinceStart_{0};
     std::uint64_t nextBotNumber_{1};
     std::uint64_t totalRoundsCompleted_{0};
     std::uint64_t currentTick_{0};
@@ -282,6 +284,9 @@ namespace arena
     static constexpr double speedBoostMultiplier_{1.55};
     static constexpr double dashDistance_{170.0};
     static constexpr int dashCooldownMs_{2600};
+    static constexpr int bumpProtectionMs_{1500};
+    static constexpr int bumpMinSteal_{4};
+    static constexpr double bumpKnockback_{56.0};
     static constexpr int shieldDurationMs_{3200};
     static constexpr int shieldCooldownMs_{10000};
     static constexpr int magnetDurationMs_{5200};

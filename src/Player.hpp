@@ -68,6 +68,7 @@ namespace arena
     std::chrono::steady_clock::time_point shieldReadyAt;
     std::chrono::steady_clock::time_point magnetUntil;
     std::chrono::steady_clock::time_point magnetReadyAt;
+    std::chrono::steady_clock::time_point bumpProtectedUntil;
     std::chrono::steady_clock::time_point nextBotDecisionAt;
     double facingX{1.0};
     double facingY{0.0};
