@@ -193,6 +193,20 @@ label {
   gap: 8px;
 }
 
+.join-error {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 92, 138, 0.42);
+  border-radius: 10px;
+  background: rgba(255, 92, 138, 0.12);
+  color: #ffb3c8;
+  font-size: 13px;
+}
+
+.join-error.hidden {
+  display: none;
+}
+
 .room-browser {
   display: grid;
   gap: 8px;

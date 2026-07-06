@@ -31,6 +31,7 @@
   const lobbyLeaderboardMeta = document.getElementById("lobbyLeaderboardMeta");
   const lobbyLeaderboard = document.getElementById("lobbyLeaderboard");
   const joinBtn = document.getElementById("joinBtn");
+  const joinError = document.getElementById("joinError");
   const chatLog = document.getElementById("chatLog");
   const chatInput = document.getElementById("chatInput");
   const leaderboardEl = document.getElementById("leaderboard");
@@ -59,6 +60,7 @@
   const state = {
     ws: null,
     joined: false,
+    pendingJoin: false,
     protocolVersion: 2,
     localId: null,
     room: "public",
@@ -170,7 +172,7 @@
 
     ws.addEventListener("open", () => {
       setStatus("online", true);
-      if (state.joined) sendJoin();
+      if (state.joined || state.pendingJoin) sendJoin();
     });
 
     ws.addEventListener("close", (event) => {
@@ -392,6 +394,8 @@
       state.world = msg.world || state.world;
       joinPanel.classList.add("hidden");
       state.joined = true;
+      state.pendingJoin = false;
+      setJoinError("");
     } else if (msg.type === "snapshot") {
       recordSnapshotMessage();
       rememberSnapshotMeta(msg);
@@ -431,7 +435,17 @@
       }
     } else if (msg.type === "error") {
       appendSystem(msg.message || "Server rejected a message");
+      if (!state.joined && state.pendingJoin) {
+        state.pendingJoin = false;
+        setJoinError(msg.message || "Join failed");
+      }
     }
+  }
+
+  function setJoinError(message) {
+    if (!joinError) return;
+    joinError.textContent = message;
+    joinError.classList.toggle("hidden", !message);
   }
 
   function rememberSnapshotMeta(msg) {
@@ -1111,7 +1125,8 @@
 
   joinBtn.addEventListener("click", () => {
     haptic(10);
-    state.joined = true;
+    setJoinError("");
+    state.pendingJoin = true;
     sendJoin();
   });
 
