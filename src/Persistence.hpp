@@ -5,12 +5,18 @@
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include <nlohmann/json.hpp>
+
+namespace pqxx
+{
+  class connection;
+}
 
 namespace arena
 {
@@ -69,9 +75,10 @@ namespace arena
   private:
     void migrate();
     void workerLoop();
-    void saveMatch(const MatchRecord &record);
+    void saveMatch(const MatchRecord &record, pqxx::connection &connection);
     [[nodiscard]] nlohmann::json participantsJson(const MatchRecord &record) const;
     void setLastError(std::string message) const;
+    [[nodiscard]] pqxx::connection &readConnectionLocked() const;
 
     std::string databaseUrl_;
     std::filesystem::path migrationsDir_;
@@ -87,5 +94,7 @@ namespace arena
     std::atomic<std::uint64_t> failedWrites_{0};
     std::atomic<std::uint64_t> schemaVersion_{0};
     mutable std::string lastError_;
+    mutable std::mutex readMutex_;
+    mutable std::unique_ptr<pqxx::connection> readConnection_;
   };
 }

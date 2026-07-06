@@ -149,9 +149,10 @@ namespace arena
         {"entries", nlohmann::json::array()},
     };
 
+    std::lock_guard<std::mutex> readLock(readMutex_);
     try
     {
-      pqxx::connection connection(databaseUrl_);
+      pqxx::connection &connection = readConnectionLocked();
       pqxx::read_transaction tx(connection);
       const auto sql = roomCode.empty() ? R"sql(
 SELECT
@@ -207,6 +208,7 @@ LIMIT $1
     }
     catch (const std::exception &e)
     {
+      readConnection_.reset();
       setLastError(e.what());
       throw;
     }
@@ -222,9 +224,10 @@ LIMIT $1
         {"matches", nlohmann::json::array()},
     };
 
+    std::lock_guard<std::mutex> readLock(readMutex_);
     try
     {
-      pqxx::connection connection(databaseUrl_);
+      pqxx::connection &connection = readConnectionLocked();
       pqxx::read_transaction tx(connection);
       const auto sql = roomCode.empty() ? R"sql(
 SELECT
@@ -288,9 +291,19 @@ LIMIT $1
     }
     catch (const std::exception &e)
     {
+      readConnection_.reset();
       setLastError(e.what());
       throw;
     }
+  }
+
+  pqxx::connection &PersistenceStore::readConnectionLocked() const
+  {
+    if (!readConnection_ || !readConnection_->is_open())
+    {
+      readConnection_ = std::make_unique<pqxx::connection>(databaseUrl_);
+    }
+    return *readConnection_;
   }
 
   void PersistenceStore::migrate()
@@ -353,6 +366,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
   void PersistenceStore::workerLoop()
   {
+    std::unique_ptr<pqxx::connection> connection;
     while (true)
     {
       MatchRecord record;
@@ -368,21 +382,35 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
         queue_.pop_front();
       }
 
-      try
+      // Reuse one write connection; on failure reconnect once before
+      // counting the write as failed.
+      for (int attempt = 0; attempt < 2; ++attempt)
       {
-        saveMatch(record);
-        ++savedMatches_;
-      }
-      catch (const std::exception &e)
-      {
-        ++failedWrites_;
-        setLastError(e.what());
-        std::cerr << "failed to persist match: " << e.what() << '\n';
+        try
+        {
+          if (!connection || !connection->is_open())
+          {
+            connection = std::make_unique<pqxx::connection>(databaseUrl_);
+          }
+          saveMatch(record, *connection);
+          ++savedMatches_;
+          break;
+        }
+        catch (const std::exception &e)
+        {
+          connection.reset();
+          if (attempt == 1)
+          {
+            ++failedWrites_;
+            setLastError(e.what());
+            std::cerr << "failed to persist match: " << e.what() << '\n';
+          }
+        }
       }
     }
   }
 
-  void PersistenceStore::saveMatch(const MatchRecord &record)
+  void PersistenceStore::saveMatch(const MatchRecord &record, pqxx::connection &connection)
   {
     int humanPlayers = 0;
     int botPlayers = 0;
@@ -391,7 +419,6 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
       participant.bot ? ++botPlayers : ++humanPlayers;
     }
 
-    pqxx::connection connection(databaseUrl_);
     pqxx::work tx(connection);
     const auto inserted = tx.exec_params(
         R"sql(
