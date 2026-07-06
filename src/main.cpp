@@ -778,10 +778,8 @@ namespace
         {
           const std::string body = "forbidden websocket origin";
           http::response<http::string_body> res = makeResponse(req_, http::status::forbidden, body, "text/plain; charset=utf-8");
-          auto self = shared_from_this();
-          auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
-          http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
-                            { self->onWrite(ec, true); });
+          res.keep_alive(false);
+          writeResponse(std::move(res));
           return;
         }
         std::make_shared<WebSocketSession>(std::move(socket_), game_)->run(std::move(req_));
@@ -799,11 +797,7 @@ namespace
       std::string query;
       if (target.size() > 2048)
       {
-        res = makeResponse(req_, http::status::uri_too_long, "uri too long", "text/plain; charset=utf-8");
-        auto self = shared_from_this();
-        auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
-        http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
-                          { self->onWrite(ec, sp->need_eof()); });
+        writeResponse(makeResponse(req_, http::status::uri_too_long, "uri too long", "text/plain; charset=utf-8"));
         return;
       }
       if (const auto queryPos = target.find('?'); queryPos != std::string::npos)
@@ -830,10 +824,7 @@ namespace
           ++gHttpRateLimitRejectionsTotal;
           res = makeResponse(req_, http::status::too_many_requests, "rate limit", "text/plain; charset=utf-8");
           res.set(http::field::retry_after, "1");
-          auto self = shared_from_this();
-          auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
-          http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
-                            { self->onWrite(ec, sp->need_eof()); });
+          writeResponse(std::move(res));
           return;
         }
       }
@@ -882,7 +873,21 @@ namespace
         serveFile(target, res);
       }
 
+      writeResponse(std::move(res));
+    }
+
+    void writeResponse(http::response<http::string_body> res)
+    {
       auto self = shared_from_this();
+      if (req_.method() == http::verb::head)
+      {
+        auto sp = std::make_shared<http::response<http::empty_body>>();
+        sp->base() = res.base();
+        sp->content_length(res.body().size());
+        http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
+                          { self->onWrite(ec, sp->need_eof()); });
+        return;
+      }
       auto sp = std::make_shared<http::response<http::string_body>>(std::move(res));
       http::async_write(socket_, *sp, [self, sp](beast::error_code ec, std::size_t)
                         { self->onWrite(ec, sp->need_eof()); });
