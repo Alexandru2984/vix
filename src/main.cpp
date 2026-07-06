@@ -667,12 +667,12 @@ namespace
       auto self = shared_from_this();
       asio::post(ws_.get_executor(), [self, message]
                  {
+                   if (self->closing_)
+                     return;
                    if (self->outbox_.size() >= maxWsOutboxMessages ||
                        self->outboxBytes_ + message.size() > maxWsOutboxBytes)
                    {
-                     self->closeClient();
-                     beast::error_code ec;
-                     self->ws_.close(websocket::close_code::policy_error, ec);
+                     self->startClose("slow consumer");
                      return;
                    }
                    const bool writing = !self->outbox_.empty();
@@ -700,6 +700,11 @@ namespace
       }
       outboxBytes_ -= std::min(outboxBytes_, outbox_.front().size());
       outbox_.pop_front();
+      if (closing_)
+      {
+        sendCloseFrame();
+        return;
+      }
       if (!outbox_.empty())
         write();
     }
@@ -711,17 +716,30 @@ namespace
         game_.onClose(client_.get());
     }
 
+    // Must run on the stream's executor. Defers the close frame while a
+    // write is in flight; async_close may overlap only the pending read.
+    void startClose(const std::string &reason)
+    {
+      closeClient();
+      if (closing_)
+        return;
+      closing_ = true;
+      closeReason_.reason = reason.size() > 120 ? reason.substr(0, 120) : reason;
+      if (outbox_.empty())
+        sendCloseFrame();
+    }
+
+    void sendCloseFrame()
+    {
+      auto self = shared_from_this();
+      ws_.async_close(closeReason_, [self](beast::error_code) {});
+    }
+
     void close(const std::string &reason)
     {
       auto self = shared_from_this();
       asio::post(ws_.get_executor(), [self, reason]
-                 {
-                   self->closeClient();
-                   beast::error_code ec;
-                   websocket::close_reason closeReason(websocket::close_code::policy_error);
-                   closeReason.reason = reason.size() > 120 ? reason.substr(0, 120) : reason;
-                   self->ws_.close(closeReason, ec);
-                 });
+                 { self->startClose(reason); });
     }
 
     websocket::stream<tcp::socket> ws_;
@@ -731,6 +749,8 @@ namespace
     std::deque<std::string> outbox_;
     std::size_t outboxBytes_{0};
     bool trustForwardedHeaders_{false};
+    bool closing_{false};
+    websocket::close_reason closeReason_{websocket::close_code::policy_error};
   };
 
   class HttpSession : public std::enable_shared_from_this<HttpSession>
