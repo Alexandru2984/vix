@@ -433,6 +433,29 @@ namespace
     }
   }
 
+  void gameServerClosesStaleSessionsAndPrunesRooms()
+  {
+    arena::GameServer::Limits limits;
+    limits.stalePlayerSeconds = 0;
+    arena::GameServer server({}, "", {}, limits);
+    CapturedClient client;
+    require(server.onOpen(client.connection), "stale test client should open");
+    server.onMessage(client.connection.get(), R"({"type":"join","name":"Sleepy","room":"stale-room"})");
+    require(client.sawType("welcome"), "stale test client should join");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    server.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(140));
+    server.stop();
+
+    require(client.closed, "stale player session should be closed by the server");
+    const auto health = server.healthJson();
+    requireEq(health.value("humans", 0), 0, "stale player should be removed");
+    requireEq(health.value("bots", 0), 0, "bots should leave a stale-pruned room");
+    const auto stats = server.statsJson();
+    requireEq(stats.at("websocket").value("activeRooms", 0), 1, "stale private room should be pruned back to public only");
+  }
+
   void gameServerNegotiatesSnapshotDeltas()
   {
     arena::GameServer server;
@@ -550,6 +573,7 @@ int main()
     run("game server applies configurable limits", gameServerAppliesConfigurableLimits);
     run("game server caps active rooms", gameServerCapsActiveRooms);
     run("game server isolates rooms", gameServerIsolatesRooms);
+    run("game server closes stale sessions and prunes rooms", gameServerClosesStaleSessionsAndPrunesRooms);
     run("game server negotiates snapshot deltas", gameServerNegotiatesSnapshotDeltas);
     run("game server loads persistent leaderboard", gameServerLoadsPersistentLeaderboard);
     run("game server bounds persistent state", gameServerBoundsPersistentState);

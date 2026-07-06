@@ -29,6 +29,7 @@ namespace arena
       std::size_t maxPlayersPerRoom{64};
       std::size_t maxActiveRooms{128};
       std::size_t maxConnectionsPerIp{16};
+      int stalePlayerSeconds{20};
       double wsMessageBurst{36.0};
       double wsMessageRefillPerSecond{14.0};
       std::uint32_t maxInvalidMessagesPerConnection{5};

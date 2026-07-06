@@ -1040,6 +1040,7 @@ int runServer()
   gameLimits.maxPlayersPerRoom = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_PLAYERS_PER_ROOM", static_cast<int>(gameLimits.maxPlayersPerRoom))));
   gameLimits.maxActiveRooms = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_ACTIVE_ROOMS", static_cast<int>(gameLimits.maxActiveRooms))));
   gameLimits.maxConnectionsPerIp = static_cast<std::size_t>(std::max(1, envInt(fileEnv, "MAX_CONNECTIONS_PER_IP", static_cast<int>(gameLimits.maxConnectionsPerIp))));
+  gameLimits.stalePlayerSeconds = std::max(1, envInt(fileEnv, "STALE_PLAYER_SECONDS", gameLimits.stalePlayerSeconds));
   gameLimits.wsMessageBurst = std::max(1.0, envDouble(fileEnv, "WS_MESSAGE_BURST", gameLimits.wsMessageBurst));
   gameLimits.wsMessageRefillPerSecond = std::max(0.1, envDouble(fileEnv, "WS_MESSAGE_REFILL_PER_SECOND", gameLimits.wsMessageRefillPerSecond));
   gameLimits.maxInvalidMessagesPerConnection = static_cast<std::uint32_t>(std::max(1, envInt(fileEnv, "MAX_INVALID_MESSAGES_PER_CONNECTION", static_cast<int>(gameLimits.maxInvalidMessagesPerConnection))));

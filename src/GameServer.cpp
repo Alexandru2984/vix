@@ -1939,6 +1939,7 @@ namespace arena
   void GameServer::cleanupStaleLocked(std::vector<nlohmann::json> &leftEvents)
   {
     const auto now = std::chrono::steady_clock::now();
+    std::vector<std::string> affectedRooms;
     for (auto it = players_.begin(); it != players_.end();)
     {
       if (it->second.bot)
@@ -1947,11 +1948,15 @@ namespace arena
         continue;
       }
       const bool expiredSession = it->second.session.expired();
-      const bool stale = now - it->second.lastSeen > std::chrono::seconds(20);
+      const bool stale = now - it->second.lastSeen > std::chrono::seconds(limits_.stalePlayerSeconds);
       if (expiredSession || stale)
       {
         const std::string roomCode = it->second.roomCode;
         leftEvents.push_back({{"type", "player_left"}, {"protocolVersion", protocolVersion}, {"serverTimeMs", unixTimeMs()}, {"id", it->second.id}, {"room", roomCode}});
+        if (auto session = it->second.session.lock())
+        {
+          closeSession(session.get(), "inactive");
+        }
         for (auto sit = sessionToPlayer_.begin(); sit != sessionToPlayer_.end();)
         {
           if (sit->second == it->second.id)
@@ -1964,11 +1969,21 @@ namespace arena
             ++sit;
           }
         }
+        affectedRooms.push_back(roomCode);
         it = players_.erase(it);
       }
       else
       {
         ++it;
+      }
+    }
+
+    for (const std::string &roomCode : affectedRooms)
+    {
+      if (humanCountLocked(roomCode) == 0)
+      {
+        removeBotsLocked(roomCode);
+        pruneEmptyRoomLocked(roomCode);
       }
     }
   }

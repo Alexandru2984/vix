@@ -173,8 +173,9 @@
       if (state.joined) sendJoin();
     });
 
-    ws.addEventListener("close", () => {
+    ws.addEventListener("close", (event) => {
       setStatus("offline", false);
+      if (event.reason) appendSystem(`Disconnected: ${event.reason}`);
       state.reconnectTimer = setTimeout(connect, 1400);
     });
 
