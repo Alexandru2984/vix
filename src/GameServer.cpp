@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <latch>
 #include <memory>
 #include <sstream>
 #include <unordered_map>
@@ -181,6 +182,7 @@ namespace arena
     {
       return;
     }
+    startSerializationPool();
     tickThread_ = std::thread(&GameServer::tickLoop, this);
   }
 
@@ -195,6 +197,8 @@ namespace arena
     {
       tickThread_.join();
     }
+    // No more snapshot jobs will be submitted once the tick thread has joined.
+    stopSerializationPool();
     // The tick thread has joined, so no snapshot broadcast can race this.
     // Tell connected clients the server is going away so they can show a
     // banner instead of silently churning through reconnect attempts.
@@ -973,7 +977,7 @@ namespace arena
 
       std::vector<nlohmann::json> leftEvents;
       std::vector<SessionPtr> sessions;
-      std::vector<PreparedPayload> snapshotPayloads;
+      std::vector<RoomSerializationJob> jobs;
 
       {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -986,12 +990,20 @@ namespace arena
         {
           sessionsByRoom[session && !session->roomCode.empty() ? session->roomCode : "public"].push_back(session);
         }
+        jobs.reserve(sessionsByRoom.size());
         for (const auto &[roomCode, roomSessions] : sessionsByRoom)
         {
           auto snapshot = std::make_shared<const nlohmann::json>(snapshotLocked(currentTick_, nextSnapshotId_++, roomCode));
-          auto prepared = snapshotPayloadsLocked(roomSessions, snapshot);
-          snapshotPayloads.insert(snapshotPayloads.end(), prepared.begin(), prepared.end());
+          jobs.push_back(captureRoomBaselinesLocked(roomSessions, snapshot));
         }
+      }
+
+      // Serialization (full dump + per-baseline deltas) runs off the game mutex
+      // and in parallel across rooms, so joins/inputs/chat are not blocked by it.
+      std::vector<PreparedPayload> snapshotPayloads = serializeJobs(jobs);
+
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
         recordTickDurationLocked(static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - workStarted).count()));
       }
@@ -2452,19 +2464,12 @@ namespace arena
     return count;
   }
 
-  std::vector<GameServer::PreparedPayload> GameServer::snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const std::shared_ptr<const nlohmann::json> &snapshot)
+  GameServer::RoomSerializationJob GameServer::captureRoomBaselinesLocked(const std::vector<SessionPtr> &sessions, const std::shared_ptr<const nlohmann::json> &snapshot)
   {
-    std::vector<PreparedPayload> payloads;
-    payloads.reserve(sessions.size());
-    const std::string fullPayload = snapshot->dump();
+    RoomSerializationJob job;
+    job.snapshot = snapshot;
+    job.clients.reserve(sessions.size());
     const std::uint64_t currentSnapshotId = snapshot->value("snapshotId", 0ULL);
-
-    // Clients in a room that acknowledged the same snapshot share an identical
-    // baseline, so the delta from that baseline to the current snapshot is the
-    // same for all of them. Memoize the serialized delta by baseline id to turn
-    // O(clients) delta computation/serialization into O(distinct baselines),
-    // which is 1 in steady state.
-    std::unordered_map<std::uint64_t, std::string> deltaByBaseline;
 
     for (const auto &session : sessions)
     {
@@ -2473,33 +2478,187 @@ namespace arena
         continue;
       }
 
-      std::string payload = fullPayload;
+      SessionBaseline entry;
+      entry.session = session;
       auto stateIt = sessionProtocol_.find(session.get());
       if (stateIt != sessionProtocol_.end())
       {
         ClientProtocolState &state = stateIt->second;
-        if (state.supportsSnapshotDelta && state.lastSnapshotId > 0 && state.lastSnapshot && state.lastSnapshot->is_object())
-        {
-          auto memo = deltaByBaseline.find(state.lastSnapshotId);
-          if (memo == deltaByBaseline.end())
-          {
-            const nlohmann::json delta = snapshotDeltaLocked(*snapshot, *state.lastSnapshot, state.lastSnapshotId);
-            memo = deltaByBaseline.emplace(state.lastSnapshotId, delta.dump()).first;
-          }
-          if (memo->second.size() < fullPayload.size())
-          {
-            payload = memo->second;
-          }
-        }
-
+        entry.supportsDelta = state.supportsSnapshotDelta;
+        entry.baselineId = state.lastSnapshotId;
+        entry.baseline = state.lastSnapshot;
+        // Advance the client's baseline to the snapshot it is about to receive.
+        // This is only a pointer copy, so it stays cheap under the game mutex.
         state.lastSnapshotId = currentSnapshotId;
         state.lastSnapshot = snapshot;
       }
+      job.clients.push_back(std::move(entry));
+    }
 
-      payloads.emplace_back(session, std::move(payload));
+    return job;
+  }
+
+  std::vector<GameServer::PreparedPayload> GameServer::serializeRoomPayloads(const RoomSerializationJob &job) const
+  {
+    std::vector<PreparedPayload> payloads;
+    if (!job.snapshot)
+    {
+      return payloads;
+    }
+    payloads.reserve(job.clients.size());
+    const std::string fullPayload = job.snapshot->dump();
+
+    // Clients that acknowledged the same snapshot share an identical baseline,
+    // so the delta to the current snapshot is the same for all of them. Memoize
+    // the serialized delta by baseline id to turn O(clients) delta work into
+    // O(distinct baselines), which is 1 in steady state.
+    std::unordered_map<std::uint64_t, std::string> deltaByBaseline;
+
+    for (const auto &client : job.clients)
+    {
+      if (!client.session)
+      {
+        continue;
+      }
+
+      std::string payload = fullPayload;
+      if (client.supportsDelta && client.baselineId > 0 && client.baseline && client.baseline->is_object())
+      {
+        auto memo = deltaByBaseline.find(client.baselineId);
+        if (memo == deltaByBaseline.end())
+        {
+          const nlohmann::json delta = snapshotDeltaLocked(*job.snapshot, *client.baseline, client.baselineId);
+          memo = deltaByBaseline.emplace(client.baselineId, delta.dump()).first;
+        }
+        if (memo->second.size() < fullPayload.size())
+        {
+          payload = memo->second;
+        }
+      }
+
+      payloads.emplace_back(client.session, std::move(payload));
     }
 
     return payloads;
+  }
+
+  std::vector<GameServer::PreparedPayload> GameServer::serializeJobs(std::vector<RoomSerializationJob> &jobs)
+  {
+    std::vector<PreparedPayload> out;
+    if (jobs.empty())
+    {
+      return out;
+    }
+
+    // A single room (or no pool) is cheaper to serialize inline than to hand
+    // off to workers.
+    if (jobs.size() == 1 || serializationPool_.empty())
+    {
+      for (const auto &job : jobs)
+      {
+        auto part = serializeRoomPayloads(job);
+        out.insert(out.end(), std::make_move_iterator(part.begin()), std::make_move_iterator(part.end()));
+      }
+      return out;
+    }
+
+    // Rooms are independent: serialize them in parallel across the pool and
+    // block until every job finishes. Referenced locals outlive the wait.
+    std::vector<std::vector<PreparedPayload>> results(jobs.size());
+    std::latch done(static_cast<std::ptrdiff_t>(jobs.size()));
+    {
+      std::lock_guard<std::mutex> lk(serializationMutex_);
+      for (std::size_t i = 0; i < jobs.size(); ++i)
+      {
+        serializationTasks_.push([this, &jobs, &results, &done, i]() {
+          try
+          {
+            results[i] = serializeRoomPayloads(jobs[i]);
+          }
+          catch (...)
+          {
+            // A failed room leaves an empty payload set; never skip count_down.
+          }
+          done.count_down();
+        });
+      }
+    }
+    serializationCv_.notify_all();
+    done.wait();
+
+    std::size_t total = 0;
+    for (const auto &result : results)
+    {
+      total += result.size();
+    }
+    out.reserve(total);
+    for (auto &result : results)
+    {
+      out.insert(out.end(), std::make_move_iterator(result.begin()), std::make_move_iterator(result.end()));
+    }
+    return out;
+  }
+
+  void GameServer::startSerializationPool()
+  {
+    if (!serializationPool_.empty())
+    {
+      return;
+    }
+    const unsigned hw = std::thread::hardware_concurrency();
+    std::size_t poolSize = hw > 4 ? hw / 2 : 2;
+    poolSize = std::min<std::size_t>(std::max<std::size_t>(poolSize, 1), 8);
+
+    {
+      std::lock_guard<std::mutex> lk(serializationMutex_);
+      serializationStop_ = false;
+    }
+    for (std::size_t i = 0; i < poolSize; ++i)
+    {
+      serializationPool_.emplace_back([this]() {
+        for (;;)
+        {
+          std::function<void()> task;
+          {
+            std::unique_lock<std::mutex> lk(serializationMutex_);
+            serializationCv_.wait(lk, [this]() { return serializationStop_ || !serializationTasks_.empty(); });
+            if (serializationStop_ && serializationTasks_.empty())
+            {
+              return;
+            }
+            task = std::move(serializationTasks_.front());
+            serializationTasks_.pop();
+          }
+          try
+          {
+            task();
+          }
+          catch (...)
+          {
+            // Workers never propagate; a failed task already counted down.
+          }
+        }
+      });
+    }
+  }
+
+  void GameServer::stopSerializationPool()
+  {
+    {
+      std::lock_guard<std::mutex> lk(serializationMutex_);
+      serializationStop_ = true;
+    }
+    serializationCv_.notify_all();
+    for (auto &worker : serializationPool_)
+    {
+      if (worker.joinable())
+      {
+        worker.join();
+      }
+    }
+    serializationPool_.clear();
+    std::queue<std::function<void()>> empty;
+    std::swap(serializationTasks_, empty);
   }
 
   void GameServer::send(ClientConnection *session, const nlohmann::json &message)

@@ -267,6 +267,33 @@ Key metrics:
 - tick duration under load
 - service memory and CPU
 
+## Snapshot Serialization Scaling
+
+Concurrent live players (persistent WebSocket sessions serialized every tick)
+are a different axis from HTTP RPS. The 20Hz tick has a 50ms/tick budget;
+past it the delivered snapshot rate collapses.
+
+Two changes moved the concurrent-player ceiling substantially (measured on the
+origin box with a co-located load generator, so conservative — a dedicated
+generator would read higher). Metric is server-reported tick p95 under light
+input across sharded rooms:
+
+| Concurrent players | Baseline | + delta memoization & shared baseline | + parallel per-room serialization |
+| ---: | ---: | ---: | ---: |
+| 150 | 125ms | 16ms | — |
+| 500 | stalls | 43ms | 23ms |
+| 1000 | stalls | stalls | 47ms (under budget) |
+
+- **Delta memoization + shared baseline:** every client in a room that
+  acknowledged the same snapshot shares one baseline, so the delta is computed
+  and serialized once per baseline instead of once per client, and baselines
+  advance by pointer copy instead of a deep JSON copy.
+- **Parallel per-room serialization:** rooms are independent, so the full dump
+  and deltas are built off the game mutex across a worker pool. The game mutex
+  is held only for simulation and snapshot construction, so joins/inputs/chat
+  are no longer blocked by serialization. Verified race-free under
+  ThreadSanitizer with a mixed chat/ability/reconnect multi-room load.
+
 ## Notes
 
 - Benchmark profile is intentionally temporary and should not be left enabled after tests.

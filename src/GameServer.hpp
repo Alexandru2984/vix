@@ -2,10 +2,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <random>
 #include <string>
 #include <thread>
@@ -156,6 +159,25 @@ namespace arena
     using SessionPtr = std::shared_ptr<ClientConnection>;
     using PreparedPayload = std::pair<SessionPtr, std::string>;
 
+    // A client's acknowledged baseline captured under the lock so the (heavy)
+    // delta serialization can run afterwards without holding the game mutex.
+    struct SessionBaseline
+    {
+      SessionPtr session;
+      bool supportsDelta{false};
+      std::uint64_t baselineId{0};
+      std::shared_ptr<const nlohmann::json> baseline;
+    };
+
+    // One room's serialization work: the immutable snapshot plus the captured
+    // baselines of every session that should receive it. Independent per room,
+    // so jobs can be serialized in parallel off the game mutex.
+    struct RoomSerializationJob
+    {
+      std::shared_ptr<const nlohmann::json> snapshot;
+      std::vector<SessionBaseline> clients;
+    };
+
     void handleJoin(ClientConnection *session, const nlohmann::json &message);
     void handleInput(ClientConnection *session, const nlohmann::json &message);
     void handleChat(ClientConnection *session, const nlohmann::json &message);
@@ -213,7 +235,16 @@ namespace arena
     [[nodiscard]] nlohmann::json roundJsonLocked(const RoomState &room) const;
     [[nodiscard]] nlohmann::json eventsJsonLocked(const RoomState &room) const;
     [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked(const std::string &roomCode = {}) const;
-    [[nodiscard]] std::vector<PreparedPayload> snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const std::shared_ptr<const nlohmann::json> &snapshot);
+    // Phase 1 (under the game mutex): capture each session's baseline and
+    // advance it to the new snapshot. Cheap: pointer copies, no serialization.
+    [[nodiscard]] RoomSerializationJob captureRoomBaselinesLocked(const std::vector<SessionPtr> &sessions, const std::shared_ptr<const nlohmann::json> &snapshot);
+    // Phase 2 (no lock held): turn a job into per-session wire payloads.
+    [[nodiscard]] std::vector<PreparedPayload> serializeRoomPayloads(const RoomSerializationJob &job) const;
+    // Serialize every room's job, spreading the work across the pool when there
+    // is more than one job; falls back to inline serialization otherwise.
+    [[nodiscard]] std::vector<PreparedPayload> serializeJobs(std::vector<RoomSerializationJob> &jobs);
+    void startSerializationPool();
+    void stopSerializationPool();
 
     void send(ClientConnection *session, const nlohmann::json &message);
     void broadcast(const nlohmann::json &message);
@@ -253,6 +284,15 @@ namespace arena
 
     std::atomic<bool> running_{false};
     std::thread tickThread_;
+
+    // Worker pool that serializes room snapshots off the game mutex. Separate
+    // from the network IO threads so heavy JSON work never starves socket IO.
+    std::vector<std::thread> serializationPool_;
+    std::queue<std::function<void()>> serializationTasks_;
+    std::mutex serializationMutex_;
+    std::condition_variable serializationCv_;
+    bool serializationStop_{false};
+
     std::chrono::steady_clock::time_point startedAt_;
     std::uint64_t nextPlayerNumber_{1};
     std::uint64_t totalConnections_{0};
