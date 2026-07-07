@@ -525,7 +525,7 @@ namespace arena
           if (state != sessionProtocol_.end())
           {
             state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
-            state->second.lastSnapshot = snapshot;
+            state->second.lastSnapshot = std::make_shared<const nlohmann::json>(snapshot);
           }
           auto historyIt = chatHistoryByRoom_.find(pit->second.roomCode);
           if (historyIt != chatHistoryByRoom_.end())
@@ -568,7 +568,7 @@ namespace arena
             if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
             {
               state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
-              state->second.lastSnapshot = snapshot;
+              state->second.lastSnapshot = std::make_shared<const nlohmann::json>(snapshot);
             }
             auto historyIt = chatHistoryByRoom_.find(roomCode);
             if (historyIt != chatHistoryByRoom_.end())
@@ -621,7 +621,7 @@ namespace arena
           if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
           {
             state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
-            state->second.lastSnapshot = snapshot;
+            state->second.lastSnapshot = std::make_shared<const nlohmann::json>(snapshot);
           }
           auto historyIt = chatHistoryByRoom_.find(roomCode);
           if (historyIt != chatHistoryByRoom_.end())
@@ -696,7 +696,7 @@ namespace arena
           if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
           {
             state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
-            state->second.lastSnapshot = snapshot;
+            state->second.lastSnapshot = std::make_shared<const nlohmann::json>(snapshot);
           }
           auto historyIt = chatHistoryByRoom_.find(roomCode);
           if (historyIt != chatHistoryByRoom_.end())
@@ -952,7 +952,7 @@ namespace arena
       if (auto state = sessionProtocol_.find(session); state != sessionProtocol_.end())
       {
         state->second.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
-        state->second.lastSnapshot = snapshot;
+        state->second.lastSnapshot = std::make_shared<const nlohmann::json>(snapshot);
       }
     }
     send(session, snapshot);
@@ -988,7 +988,7 @@ namespace arena
         }
         for (const auto &[roomCode, roomSessions] : sessionsByRoom)
         {
-          const nlohmann::json snapshot = snapshotLocked(currentTick_, nextSnapshotId_++, roomCode);
+          auto snapshot = std::make_shared<const nlohmann::json>(snapshotLocked(currentTick_, nextSnapshotId_++, roomCode));
           auto prepared = snapshotPayloadsLocked(roomSessions, snapshot);
           snapshotPayloads.insert(snapshotPayloads.end(), prepared.begin(), prepared.end());
         }
@@ -2452,11 +2452,19 @@ namespace arena
     return count;
   }
 
-  std::vector<GameServer::PreparedPayload> GameServer::snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const nlohmann::json &snapshot)
+  std::vector<GameServer::PreparedPayload> GameServer::snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const std::shared_ptr<const nlohmann::json> &snapshot)
   {
     std::vector<PreparedPayload> payloads;
     payloads.reserve(sessions.size());
-    const std::string fullPayload = snapshot.dump();
+    const std::string fullPayload = snapshot->dump();
+    const std::uint64_t currentSnapshotId = snapshot->value("snapshotId", 0ULL);
+
+    // Clients in a room that acknowledged the same snapshot share an identical
+    // baseline, so the delta from that baseline to the current snapshot is the
+    // same for all of them. Memoize the serialized delta by baseline id to turn
+    // O(clients) delta computation/serialization into O(distinct baselines),
+    // which is 1 in steady state.
+    std::unordered_map<std::uint64_t, std::string> deltaByBaseline;
 
     for (const auto &session : sessions)
     {
@@ -2470,17 +2478,21 @@ namespace arena
       if (stateIt != sessionProtocol_.end())
       {
         ClientProtocolState &state = stateIt->second;
-        if (state.supportsSnapshotDelta && state.lastSnapshotId > 0 && state.lastSnapshot.is_object())
+        if (state.supportsSnapshotDelta && state.lastSnapshotId > 0 && state.lastSnapshot && state.lastSnapshot->is_object())
         {
-          const nlohmann::json delta = snapshotDeltaLocked(snapshot, state.lastSnapshot, state.lastSnapshotId);
-          const std::string deltaPayload = delta.dump();
-          if (deltaPayload.size() < fullPayload.size())
+          auto memo = deltaByBaseline.find(state.lastSnapshotId);
+          if (memo == deltaByBaseline.end())
           {
-            payload = deltaPayload;
+            const nlohmann::json delta = snapshotDeltaLocked(*snapshot, *state.lastSnapshot, state.lastSnapshotId);
+            memo = deltaByBaseline.emplace(state.lastSnapshotId, delta.dump()).first;
+          }
+          if (memo->second.size() < fullPayload.size())
+          {
+            payload = memo->second;
           }
         }
 
-        state.lastSnapshotId = snapshot.value("snapshotId", 0ULL);
+        state.lastSnapshotId = currentSnapshotId;
         state.lastSnapshot = snapshot;
       }
 

@@ -130,7 +130,10 @@ namespace arena
       int version{1};
       bool supportsSnapshotDelta{false};
       std::uint64_t lastSnapshotId{0};
-      nlohmann::json lastSnapshot;
+      // Shared, immutable baseline snapshot. Every client that acknowledged the
+      // same snapshot id points at the same object, so advancing a client's
+      // baseline is a pointer copy rather than a deep JSON copy.
+      std::shared_ptr<const nlohmann::json> lastSnapshot;
     };
 
     struct LeaderboardEntry
@@ -210,7 +213,7 @@ namespace arena
     [[nodiscard]] nlohmann::json roundJsonLocked(const RoomState &room) const;
     [[nodiscard]] nlohmann::json eventsJsonLocked(const RoomState &room) const;
     [[nodiscard]] std::vector<SessionPtr> liveSessionsLocked(const std::string &roomCode = {}) const;
-    [[nodiscard]] std::vector<PreparedPayload> snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const nlohmann::json &snapshot);
+    [[nodiscard]] std::vector<PreparedPayload> snapshotPayloadsLocked(const std::vector<SessionPtr> &sessions, const std::shared_ptr<const nlohmann::json> &snapshot);
 
     void send(ClientConnection *session, const nlohmann::json &message);
     void broadcast(const nlohmann::json &message);
